@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: magicconch-bot
+  labels:
+    app: magicconch-bot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: magicconch-bot
+  template:
+    metadata:
+      labels:
+        app: magicconch-bot
+    spec:
+      containers:
+      - name: magicconch-bot
+        image: raegous/magicconch:latest
+        env:
+        - name: DISCORD_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: discord-secret
+              key: token
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        imagePullPolicy: Always
+      restartPolicy: Always
