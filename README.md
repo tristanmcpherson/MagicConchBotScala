@@ -78,15 +78,6 @@ A Discord music bot written in Scala 3 using functional programming with Cats Ef
    # Download from https://ffmpeg.org/download.html
    ```
 
-5. **libopus** (Optional, for future audio streaming)
-   ```bash
-   # macOS
-   brew install opus
-
-   # Linux
-   sudo apt-get install libopus-dev
-   ```
-
 ### Discord Application Setup
 
 1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
@@ -167,32 +158,34 @@ The bot is built using functional programming principles with the following comp
 - **sttp client4**: WebSocket support
 - **Circe 0.14.14**: JSON encoding/decoding
 - **log4cats**: Functional logging
+- **Concentus 1.10**: Pure Java Opus encoder for audio streaming
 
 ## Current Limitations
 
 ### Known Issues
 
-1. **Opus Encoding Not Implemented**
-   - The bot can connect to voice channels but cannot stream audio yet
-   - Audio must be encoded in Opus format for Discord
-   - See `AudioStreamer.scala` for implementation options
-
-2. **UDP IP Discovery Incomplete**
+1. **UDP IP Discovery Incomplete**
    - Voice connection handshake is partially implemented
    - May not work on all network configurations
+   - Audio streaming implementation is complete but needs testing
 
-3. **No Playlist Support Yet**
+2. **No Playlist Support Yet**
    - Only single YouTube videos are supported
    - Playlist extraction code exists but needs integration
 
-4. **Limited Error Handling**
+3. **Limited Error Handling**
    - Network failures may cause the bot to disconnect
    - No automatic reconnection logic
 
+4. **Encoder Performance**
+   - Opus encoder is created per audio frame (could be cached for better performance)
+
 ### To-Do List
 
-- [ ] Implement Opus encoding for audio streaming
+- [x] Implement Opus encoding for audio streaming ✓
 - [ ] Complete UDP IP discovery protocol
+- [ ] Test and debug audio streaming end-to-end
+- [ ] Optimize encoder performance (cache encoder instance)
 - [ ] Add playlist support
 - [ ] Implement automatic reconnection
 - [ ] Add volume control
@@ -275,4 +268,4 @@ This project is open source. Feel free to use and modify as needed.
 
 ---
 
-**Note**: This bot is currently under development. Audio streaming functionality requires Opus encoding implementation to work with Discord. See the code documentation for details on implementing this feature.
+**Note**: This bot is currently under development. Opus encoding has been implemented using the Concentus library. Audio streaming should work once UDP IP discovery is completed and tested. Contributions are welcome!

@@ -14,32 +14,53 @@ import java.nio.ByteBuffer
 import DiscordModels.*
 
 import scala.concurrent.duration.DurationInt
+import org.concentus.{OpusEncoder, OpusApplication, OpusSignal}
+import java.nio.ByteOrder
 
 /**
  * AudioStreamer handles streaming audio to Discord voice channels.
  *
  * Architecture:
  * 1. Downloads audio from YouTube URL using yt-dlp
- * 2. Pipes through FFmpeg to convert to PCM (48kHz, stereo)
+ * 2. Pipes through FFmpeg to convert to PCM (48kHz, stereo, 16-bit)
  * 3. Chunks PCM into frames (960 samples = 20ms at 48kHz)
- * 4. Encodes each frame to Opus (TODO: NOT YET IMPLEMENTED)
+ * 4. Encodes each frame to Opus using Concentus library
  * 5. Wraps in RTP packets and sends over UDP
  *
+ * Opus Configuration:
+ * - Sample rate: 48000 Hz
+ * - Channels: 2 (stereo)
+ * - Frame size: 960 samples (20ms)
+ * - Bitrate: 128 kbps
+ * - Application: OPUS_APPLICATION_AUDIO (optimized for music)
+ * - Signal: OPUS_SIGNAL_MUSIC
+ *
  * Current Limitations:
- * - Opus encoding is NOT implemented (see encodeToOpus method)
- * - This means audio streaming will NOT work with Discord
  * - UDP endpoint discovery is incomplete
  * - No error recovery or reconnection logic
+ * - Encoder is created per frame (could be optimized by caching)
  *
  * Dependencies Required:
  * - yt-dlp: For downloading YouTube audio
  * - ffmpeg: For audio format conversion
- * - libopus: For Opus encoding (when implemented)
+ * - concentus: Pure Java Opus encoder (no native libs needed)
  */
 class AudioStreamer[F[_]: Async: Processes](using Logger[F]) {
 
+  private val SAMPLE_RATE = 48000
+  private val CHANNELS = 2
   private val OPUS_FRAME_SIZE = 960 // samples per frame at 48kHz
   private val OPUS_FRAME_DURATION = 20 // milliseconds
+  private val BITRATE = 128000 // 128 kbps
+
+  // Create Opus encoder for Discord voice
+  // Using OPUS_APPLICATION_AUDIO for music playback
+  private def createOpusEncoder(): OpusEncoder = {
+    val encoder = new OpusEncoder(SAMPLE_RATE, CHANNELS, OpusApplication.OPUS_APPLICATION_AUDIO)
+    encoder.setBitrate(BITRATE)
+    encoder.setSignalType(OpusSignal.OPUS_SIGNAL_MUSIC)
+    encoder
+  }
   
   def streamAudio(
     streamUrl: String, 
@@ -97,33 +118,45 @@ class AudioStreamer[F[_]: Async: Processes](using Logger[F]) {
   }
   
   private def encodeToOpus(pcmData: Array[Byte]): F[Array[Byte]] = {
-    // TODO: CRITICAL - Opus encoding is required for Discord voice to work!
-    //
-    // Current Status: This method returns raw PCM data, which Discord will NOT accept.
-    // Discord requires audio to be encoded in Opus format before sending over RTP.
-    //
-    // To implement proper Opus encoding, you have several options:
-    //
-    // Option 1: Use a Java/Scala Opus library
-    //   - tomp2p-opus: https://github.com/tomp2p/tomp2p-opus
-    //   - concentus (Java port): https://github.com/lostromb/concentus
-    //
-    // Option 2: Use JNI (Java Native Interface) to call libopus directly
-    //   - More complex but gives you direct access to libopus
-    //   - Example: https://github.com/nwaldispuehl/java-opus-codec
-    //
-    // Option 3: Use FFmpeg to encode to Opus and pipe the output
-    //   - Change the FFmpeg command to output Opus directly
-    //   - Command: ffmpeg -i <url> -f opus -ar 48000 -ac 2 -
-    //
-    // Opus Requirements for Discord:
-    //   - Sample rate: 48000 Hz (48 kHz)
-    //   - Channels: 2 (stereo)
-    //   - Frame size: 960 samples (20ms at 48kHz)
-    //   - Bitrate: 64-128 kbps recommended
-    //
-    Logger[F].warn("⚠️  Opus encoding not implemented! Audio will not work with Discord.") >>
-    Async[F].pure(pcmData)
+    Async[F].blocking {
+      // Convert PCM bytes to shorts (16-bit PCM, little-endian)
+      val pcmShorts = new Array[Short](pcmData.length / 2)
+      val buffer = ByteBuffer.wrap(pcmData).order(ByteOrder.LITTLE_ENDIAN)
+      var i = 0
+      while (i < pcmShorts.length) {
+        pcmShorts(i) = buffer.getShort()
+        i += 1
+      }
+
+      // Create encoder (ideally this should be cached, but for simplicity creating per frame)
+      val encoder = createOpusEncoder()
+
+      // Output buffer for encoded Opus data
+      // Max Opus frame size is typically around 4000 bytes for music at high bitrate
+      val opusOutput = new Array[Byte](4000)
+
+      // Encode the PCM data to Opus
+      // encode(pcm, pcmOffset, frameSize, output, outputOffset, maxOutputLength)
+      val encodedLength = encoder.encode(
+        pcmShorts,
+        0,
+        OPUS_FRAME_SIZE,
+        opusOutput,
+        0,
+        opusOutput.length
+      )
+
+      // Return only the actual encoded bytes
+      if (encodedLength > 0) {
+        opusOutput.take(encodedLength)
+      } else {
+        // Encoding failed, return empty array
+        Array.empty[Byte]
+      }
+    }.handleErrorWith { error =>
+      Logger[F].error(s"Failed to encode Opus: $error") >>
+      Async[F].pure(Array.empty[Byte])
+    }
   }
   
   private def createRTPPacket(

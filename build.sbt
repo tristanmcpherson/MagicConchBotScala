@@ -26,6 +26,7 @@ lazy val root = (project in file("."))
       "org.typelevel" %% "log4cats-slf4j" % "2.7.1",
       "com.github.pureconfig" %% "pureconfig-core" % "0.17.9",
       "org.java-websocket" % "Java-WebSocket" % "1.6.0",
-      "co.fs2" %% "fs2-core" % "3.11.0"
+      "co.fs2" %% "fs2-core" % "3.11.0",
+      "org.concentus" % "concentus" % "1.10"
     )
   )

@@ -3,7 +3,9 @@
     "allow": [
       "WebFetch(domain:http4s.org)",
       "Bash(git init:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(sbt compile:*)"
     ],
     "deny": []
   }

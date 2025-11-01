@@ -32,8 +32,9 @@ import java.net.InetSocketAddress
  * Current Status:
  * - WebSocket connection: ✓ Implemented
  * - Voice protocol handshake: ✓ Implemented
+ * - Opus encoding: ✓ Implemented (using Concentus)
  * - UDP IP discovery: ⚠️  Partially implemented
- * - Audio streaming: ✗ Missing Opus encoding
+ * - RTP packet creation: ✓ Implemented
  *
  * See: https://discord.com/developers/docs/topics/voice-connections
  */
