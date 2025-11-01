@@ -12,9 +12,10 @@ import java.net.DatagramSocket
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import DiscordModels.*
+import io.github.jaredmdobson.concentus.*
 
 import scala.concurrent.duration.DurationInt
-import org.concentus.{OpusEncoder, OpusApplication, OpusSignal}
+
 import java.nio.ByteOrder
 
 /**

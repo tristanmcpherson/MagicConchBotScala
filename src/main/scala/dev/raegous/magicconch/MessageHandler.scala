@@ -25,8 +25,12 @@ class MessageHandler[F[_]: Async](discordApi: DiscordApiClient[F], voiceManager:
   }
   
   private def handleTextMessage(message: DiscordMessage, ws: WebSocket[F]): F[Unit] = {
-    message.content.toLowerCase match {
-      case content if content.startsWith("!magicconch") =>
+    // Lowercase for command matching, but preserve original for arguments
+    val contentLower = message.content.toLowerCase
+    val content = message.content
+
+    contentLower match {
+      case _ if contentLower.startsWith("!magicconch") =>
         val responses = List(
           "Maybe someday.",
           "Nothing.",
@@ -38,17 +42,19 @@ class MessageHandler[F[_]: Async](discordApi: DiscordApiClient[F], voiceManager:
         )
         val response = responses(scala.util.Random.nextInt(responses.length))
         discordApi.sendMessage(message.channel_id, response)
-      case content if content.startsWith("!join") =>
+      case _ if contentLower.startsWith("!join") =>
         handleJoinCommand(message, ws)
-      case content if content.startsWith("!leave") =>
+      case _ if contentLower.startsWith("!leave") =>
         handleLeaveCommand(message, ws)
-      case content if content.startsWith("!play ") =>
-        handlePlayCommand(message, content.drop(6).trim)
-      case content if content.startsWith("!stop") =>
+      case _ if contentLower.startsWith("!play ") =>
+        // Use original content to preserve case-sensitive YouTube video IDs
+        val url = content.drop(6).trim
+        handlePlayCommand(message, url)
+      case _ if contentLower.startsWith("!stop") =>
         handleStopCommand(message)
-      case content if content.startsWith("!queue") =>
+      case _ if contentLower.startsWith("!queue") =>
         handleQueueCommand(message)
-      case content if content.startsWith("!skip") =>
+      case _ if contentLower.startsWith("!skip") =>
         handleSkipCommand(message)
       case _ => Async[F].pure(())
     }
