@@ -76,3 +76,6 @@ docker-compose.override.yml
 # Uncomment if you have any application-specific files to ignore
 # config/local.conf
 # secrets.conf
+
+*/node_modules
+dashboard-ui/node_modules/*
