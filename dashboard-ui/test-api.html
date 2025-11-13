@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Test</title>
+</head>
+<body>
+    <h1>Magic Conch API Test</h1>
+    <button onclick="testHealth()">Test Health Endpoint</button>
+    <button onclick="testGuilds()">Test Guilds Endpoint</button>
+    <pre id="output"></pre>
+
+    <script>
+        const API_BASE = 'http://localhost:8080';
+
+        async function testHealth() {
+            try {
+                const response = await fetch(`${API_BASE}/api/health`);
+                const data = await response.json();
+                document.getElementById('output').textContent =
+                    `✅ Health endpoint works!\n${JSON.stringify(data, null, 2)}`;
+            } catch (error) {
+                document.getElementById('output').textContent =
+                    `❌ Health endpoint failed!\n${error.message}\n\nMake sure the Scala backend is running on port 8080`;
+            }
+        }
+
+        async function testGuilds() {
+            try {
+                const response = await fetch(`${API_BASE}/api/guilds`);
+                const data = await response.json();
+                document.getElementById('output').textContent =
+                    `✅ Guilds endpoint works!\n${JSON.stringify(data, null, 2)}`;
+            } catch (error) {
+                document.getElementById('output').textContent =
+                    `❌ Guilds endpoint failed!\n${error.message}\n\nMake sure the Scala backend is running on port 8080`;
+            }
+        }
+    </script>
+</body>
+</html>
