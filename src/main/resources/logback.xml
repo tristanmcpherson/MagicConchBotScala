@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+  <!-- Console appender with abbreviated package names -->
+  <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <!-- %logger{36} shows logger name, max 36 chars, with right-side truncation -->
+      <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %class{0} - %msg%n</pattern>
+    </encoder>
+  </appender>
+
+  <!-- Set root logger level to INFO -->
+  <root level="INFO">
+    <appender-ref ref="STDOUT" />
+  </root>
+
+  <!-- Optional: Set specific package levels -->
+  <!-- Uncomment to reduce noise from specific packages -->
+  <!--
+  <logger name="sttp.client4" level="INFO" />
+  <logger name="org.http4s" level="INFO" />
+  -->
+</configuration>
