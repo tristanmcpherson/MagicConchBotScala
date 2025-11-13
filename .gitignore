@@ -79,3 +79,4 @@ docker-compose.override.yml
 
 */node_modules
 dashboard-ui/node_modules/*
+*.semanticdb
