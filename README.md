@@ -147,7 +147,7 @@ The bot is built using functional programming principles with the following comp
 - **VoiceManager**: Manages voice channel connections and music queue
 - **VoiceGateway**: Handles Discord voice WebSocket protocol
 - **AudioStreamer**: Streams audio to Discord voice channels
-- **YouTubeExtractor**: Extracts audio information from YouTube using yt-dlp
+- **YtDlpExtractor**: Extracts audio information from multiple sources using yt-dlp
 
 ### Technology Stack
 
@@ -211,7 +211,8 @@ magic-conch-scala/
 │   ├── VoiceManager.scala           # Voice & queue management
 │   ├── VoiceGateway.scala           # Voice WebSocket
 │   ├── AudioStreamer.scala          # Audio streaming
-│   ├── YouTubeExtractor.scala       # YouTube integration
+│   ├── audio/
+│   │   └── YtDlpExtractor.scala    # Multi-source audio extraction
 │   └── DiscordModels.scala          # Data models
 ├── build.sbt                        # SBT build configuration
 ├── Dockerfile                       # Docker configuration

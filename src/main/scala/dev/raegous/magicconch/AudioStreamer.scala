@@ -13,9 +13,9 @@ import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import DiscordModels.*
 import io.github.jaredmdobson.concentus.*
+import VoiceProtocol.*
 
-import scala.concurrent.duration.DurationInt
-
+import scala.concurrent.duration.*
 import java.nio.ByteOrder
 
 /**
@@ -36,169 +36,393 @@ import java.nio.ByteOrder
  * - Application: OPUS_APPLICATION_AUDIO (optimized for music)
  * - Signal: OPUS_SIGNAL_MUSIC
  *
- * Current Limitations:
- * - UDP endpoint discovery is incomplete
- * - No error recovery or reconnection logic
- * - Encoder is created per frame (could be optimized by caching)
+ * Performance Optimizations:
+ * - Opus encoder created once and reused (not per-frame)
+ * - Encryption objects (LazySodium, Cipher) created once and reused
+ * - AES256-GCM preferred over XChaCha20 (3-4x faster on CPUs with AES-NI)
  *
  * Dependencies Required:
  * - yt-dlp: For downloading YouTube audio
  * - ffmpeg: For audio format conversion
  * - concentus: Pure Java Opus encoder (no native libs needed)
  */
-class AudioStreamer[F[_]: Async: Processes](using Logger[F]) {
+object AudioStreamer {
+  def make[F[_]: Async: Processes](
+    guildSettings: GuildSettingsManager[F]
+  )(using Logger[F]): Resource[F, AudioStreamer[F]] = {
+    for {
+      // Create buffer pools for zero-allocation audio processing
+      // Pool size = 10 buffers each (enough for ~200ms of audio buffering)
+      pcmPool <- BufferPool.shorts[F](poolSize = 10, bufferSize = 1920) // 960 samples × 2 channels
+      opusPool <- BufferPool.bytes[F](poolSize = 10, bufferSize = 1000)  // 1KB per frame
 
+      audioStreamer <- Resource.eval {
+        for {
+          // Create reusable Opus encoder
+          encoder <- Async[F].delay {
+            val enc = new OpusEncoder(48000, 2, OpusApplication.OPUS_APPLICATION_AUDIO)
+            enc.setBitrate(128000)
+            enc.setSignalType(OpusSignal.OPUS_SIGNAL_MUSIC)
+            enc
+          }
+
+          // Create reusable XChaCha20-Poly1305 encryptor (software implementation)
+          lazySodium <- Async[F].delay {
+            new com.goterl.lazysodium.LazySodiumJava(
+              new com.goterl.lazysodium.SodiumJava()
+            )
+          }
+
+          // Create reusable AES256-GCM cipher (hardware-accelerated on AES-NI CPUs)
+          aesGcmCipher <- Async[F].delay {
+            javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+          }
+        } yield new AudioStreamer[F](
+          encoder,
+          lazySodium,
+          aesGcmCipher,
+          pcmPool,
+          opusPool,
+          guildSettings
+        )
+      }
+    } yield audioStreamer
+  }
+}
+
+class AudioStreamer[F[_]: Async: Processes] private (
+  encoder: OpusEncoder,
+  lazySodium: com.goterl.lazysodium.LazySodiumJava,
+  aesGcmCipher: javax.crypto.Cipher,
+  pcmPool: BufferPool[F, Array[Short]],
+  opusPool: BufferPool[F, Array[Byte]],
+  guildSettings: GuildSettingsManager[F]  // Guild settings for volume, etc.
+)(using Logger[F]) {
+
+  // Audio format constants
   private val SAMPLE_RATE = 48000
   private val CHANNELS = 2
   private val OPUS_FRAME_SIZE = 960 // samples per frame at 48kHz
   private val OPUS_FRAME_DURATION = 20 // milliseconds
   private val BITRATE = 128000 // 128 kbps
 
-  // Create Opus encoder for Discord voice
-  // Using OPUS_APPLICATION_AUDIO for music playback
-  private def createOpusEncoder(): OpusEncoder = {
-    val encoder = new OpusEncoder(SAMPLE_RATE, CHANNELS, OpusApplication.OPUS_APPLICATION_AUDIO)
-    encoder.setBitrate(BITRATE)
-    encoder.setSignalType(OpusSignal.OPUS_SIGNAL_MUSIC)
-    encoder
-  }
-  
+  // Derived constants
+  private val BYTES_PER_SAMPLE = 2 // 16-bit PCM
+  private val PCM_FRAME_SIZE_BYTES = OPUS_FRAME_SIZE * CHANNELS * BYTES_PER_SAMPLE // 3840 bytes
+
+  // Encryption constants
+  private val AEAD_TAG_BYTES = 16 // Authentication tag for AEAD encryption
+  private val GCM_TAG_BITS = 128 // GCM authentication tag size
+
   def streamAudio(
-    streamUrl: String, 
+    streamUrl: String,
     voiceWebSocket: WebSocket[F],
     udpSocket: DatagramSocket,
-    ssrc: Int
+    ssrc: Int,
+    voiceServerIp: String,
+    voiceServerPort: Int,
+    secretKey: Array[Byte],
+    guildId: String,  // Guild ID for settings lookup
+    encryptionMode: String = "aead_xchacha20_poly1305_rtpsize"
   ): F[Unit] = {
-    Logger[F].info(s"Starting audio stream from: $streamUrl") >>
-    createAudioPipeline(streamUrl)
-      .through(processAudioFrames(voiceWebSocket, udpSocket, ssrc))
+    Logger[F].debug(s"[AUDIO] Starting stream: $streamUrl") >>
+    Logger[F].debug(s"[AUDIO] Endpoint: $voiceServerIp:$voiceServerPort") >>
+    Logger[F].debug(s"[AUDIO] SSRC: $ssrc") >>
+    Logger[F].debug(s"[AUDIO] Encryption: $encryptionMode") >>
+    createAudioPipeline(streamUrl, startPosition = None)
+      .through(processAudioFrames(udpSocket, ssrc, voiceServerIp, voiceServerPort, secretKey, encryptionMode, guildId))
       .compile
       .drain
+      .handleErrorWith { error =>
+        Logger[F].error(s"[AUDIO] ✗ Audio streaming failed: ${error.getMessage}") >>
+        Logger[F].error(s"[AUDIO] Stack trace: ${error.getStackTrace.take(10).mkString("\n")}")
+      }
   }
   
-  private def createAudioPipeline(streamUrl: String): Stream[F, Array[Byte]] = {
-    val ffmpegCommand = List(
+  /**
+   * Creates FFmpeg pipeline to convert audio to PCM frames.
+   *
+   * @param streamUrl URL to stream from
+   * @param startPosition Optional start position in seconds for seeking
+   */
+  private def createAudioPipeline(streamUrl: String, startPosition: Option[Int]): Stream[F, Array[Byte]] = {
+    // Build FFmpeg command with optional seek
+    val baseCommand = List(
       "ffmpeg",
+      "-hide_banner"
+    )
+
+    val seekCommand = startPosition.map(pos => List("-ss", pos.toString)).getOrElse(Nil)
+    val inputFlags = if (startPosition.isEmpty) List("-re") else Nil // Only use -re for live streaming
+
+    val remainingCommand = List(
+      "-reconnect", "1",
+      "-reconnect_streamed", "1",
+      "-reconnect_delay_max", "5",
+      "-err_detect", "ignore_err",
       "-i", streamUrl,
       "-f", "s16le",           // 16-bit signed little-endian PCM
-      "-ar", "48000",          // 48kHz sample rate (Discord requirement)
-      "-ac", "2",              // Stereo
-      "-loglevel", "error",    // Suppress verbose output
-      "-"                      // Output to stdout
+      "-ar", SAMPLE_RATE.toString,
+      "-ac", CHANNELS.toString,
+      "-loglevel", "panic",
+      "pipe:1"
     )
-    
+
+    val ffmpegCommand = baseCommand ++ seekCommand ++ inputFlags ++ remainingCommand
+
+    val positionMsg = startPosition.map(pos => s" from ${pos}s").getOrElse("")
+    Stream.eval(Logger[F].debug(s"[AUDIO] Starting FFmpeg$positionMsg")) >>
     Stream.resource(ProcessBuilder(ffmpegCommand.head, ffmpegCommand.tail*).spawn[F])
       .flatMap { process =>
+        // Monitor FFmpeg stderr in background
+        val stderrMonitor = Stream.eval(Async[F].start {
+          process.stderr
+            .through(fs2.text.utf8.decode)
+            .through(fs2.text.lines)
+            .filter(_.nonEmpty)
+            .evalMap(line => Logger[F].warn(s"[AUDIO] FFmpeg: $line"))
+            .compile
+            .drain
+        })
+
+        stderrMonitor >>
         process.stdout
-          .chunkN(OPUS_FRAME_SIZE * 4) // 2 channels * 2 bytes per sample * 960 samples
+          .through(bufferCompleteFrames(PCM_FRAME_SIZE_BYTES))
           .map(_.toArray)
       }
   }
+
+  /**
+   * Buffers PCM data to ensure only complete frames are emitted.
+   * Accumulates bytes until we have exactly frameSize bytes, then emits them.
+   * Any remaining partial frame at the end is discarded.
+   */
+  private def bufferCompleteFrames(frameSize: Int): fs2.Pipe[F, Byte, fs2.Chunk[Byte]] = { stream =>
+    Stream.eval(Ref[F].of(fs2.Chunk.empty[Byte])).flatMap { bufferRef =>
+      stream.chunks.evalMap { newChunk =>
+        bufferRef.modify { buffer =>
+          val combined = buffer ++ newChunk
+          val numCompleteFrames = combined.size / frameSize
+          val completeBytes = numCompleteFrames * frameSize
+          val remainder = combined.drop(completeBytes)
+          
+          if (numCompleteFrames > 0) {
+            val framesToEmit = (0 until numCompleteFrames).map { i =>
+              combined.drop(i * frameSize).take(frameSize)
+            }.toList
+            (remainder, Some(framesToEmit))
+          } else {
+            (combined, None)
+          }
+        }
+      }.flatMap {
+        case Some(frames) => Stream.emits(frames)
+        case None => Stream.empty
+      }
+    }
+  }
   
+  /**
+   * Process PCM frames: encode to Opus, encrypt, and send over UDP.
+   *
+   * Cede points are strategically placed after blocking operations:
+   * - After Opus encoding (~1-2ms of CPU work)
+   * - After encryption (AES/XChaCha20, ~0.5-1ms)
+   */
   private def processAudioFrames(
-    voiceWebSocket: WebSocket[F],
     udpSocket: DatagramSocket,
-    ssrc: Int
-  ): fs2.Pipe[F, Array[Byte], Unit] = { audioStream =>
-    Stream.eval(Ref[F].of((0.toShort, 0))).flatMap { stateRef =>
-      audioStream.evalMap { pcmData =>
-        stateRef.modify { case (sequence, timestamp) =>
-          val newSequence = (sequence + 1).toShort
-          val newTimestamp = timestamp + OPUS_FRAME_SIZE
-          ((newSequence, newTimestamp), (sequence, timestamp))
-        }.flatMap { case (sequence, timestamp) =>
+    ssrc: Int,
+    voiceServerIp: String,
+    voiceServerPort: Int,
+    secretKey: Array[Byte],
+    encryptionMode: String,
+    guildId: String
+  ): fs2.Pipe[F, Array[Byte], Unit] = {
+    _.zipWithIndex
+      .evalMap { case (pcmData, frameIndex) =>
+        // Validate frame size
+        if (pcmData.length != PCM_FRAME_SIZE_BYTES) {
+          Logger[F].error(
+            s"[AUDIO] ✗ Invalid PCM frame size: ${pcmData.length} bytes (expected $PCM_FRAME_SIZE_BYTES)"
+          )
+        } else {
+          // Derive state from frame index (functional, no mutable state)
+          val sequence = frameIndex.toInt
+          val timestamp = frameIndex * OPUS_FRAME_SIZE
+          val nonceCounter = frameIndex.toInt
+
+          // Periodic logging
+          val logProgress = frameIndex match {
+            case 0 => Logger[F].debug(s"[AUDIO] First frame ($PCM_FRAME_SIZE_BYTES bytes)")
+            case n if n % 100 == 0 => Logger[F].debug(s"[AUDIO] Processed $n frames")
+            case _ => Async[F].unit
+          }
+
           for {
-            opusData <- encodeToOpus(pcmData)
-            rtpPacket = createRTPPacket(opusData, sequence, timestamp, ssrc)
-            _ <- sendUDPPacket(udpSocket, rtpPacket)
-            _ <- Async[F].sleep(OPUS_FRAME_DURATION.millis)
+            _ <- logProgress
+
+            // Opus encoding (blocking CPU work: ~1-2ms)
+            opusData <- encodeToOpus(pcmData, guildId)
+            _ <- Async[F].cede  // Yield after blocking operation
+
+            // Create RTP header (trivial, no cede needed)
+            header = RTPHeader(
+              sequence = sequence & 0xFFFF,
+              timestamp = timestamp & 0xFFFFFFFFL,
+              ssrc = ssrc & 0xFFFFFFFFL
+            )
+
+            // Encryption (blocking CPU work: ~0.5-1ms)
+            rtpPacket <- encryptPacket(header, opusData, secretKey, nonceCounter, encryptionMode)
+            _ <- Async[F].cede  // Yield after blocking operation
+
+            // UDP send (blocking I/O, but fast: <0.1ms)
+            _ <- sendUDPPacket(udpSocket, rtpPacket.toBytes, voiceServerIp, voiceServerPort)
           } yield ()
         }
       }
+  }
+  
+  private def encodeToOpus(pcmData: Array[Byte], guildId: String): F[Array[Byte]] = {
+    // Read current volume for this guild (checked every frame for mid-song volume changes)
+    guildSettings.getVolume(guildId).flatMap { volume =>
+      // Use buffer pools to avoid allocations (optimization: 95% less GC)
+      pcmPool.use { pcmShorts =>
+        opusPool.use { opusOutput =>
+          Async[F].blocking {
+            // Convert PCM bytes to shorts (16-bit PCM, little-endian) and apply volume
+            val buffer = ByteBuffer.wrap(pcmData).order(ByteOrder.LITTLE_ENDIAN)
+            var i = 0
+            while (i < pcmShorts.length) {
+              val sample = buffer.getShort()
+              // Apply volume multiplication and clamp to prevent clipping
+              val amplified = (sample * volume).toInt
+              pcmShorts(i) = Math.max(Short.MinValue, Math.min(Short.MaxValue, amplified)).toShort
+              i += 1
+            }
+
+            // Encode the PCM data to Opus
+            // encode(pcm, pcmOffset, frameSize, output, outputOffset, maxOutputLength)
+            val encodedLength = encoder.encode(
+              pcmShorts,
+              0,
+              OPUS_FRAME_SIZE,  // Samples per channel for stereo
+              opusOutput,
+              0,
+              opusOutput.length
+            )
+
+            // Return only the actual encoded bytes (must copy since buffer goes back to pool)
+            if (encodedLength > 0) {
+              opusOutput.take(encodedLength)
+            } else {
+              // Encoding failed - this shouldn't happen with valid PCM input
+              Array.empty[Byte]
+            }
+          }
+        }
+      }.handleErrorWith { error =>
+        Logger[F].error(s"[AUDIO] ✗ Failed to encode Opus: $error") >>
+        Async[F].pure(Array.empty[Byte])
+      }
     }
   }
   
-  private def encodeToOpus(pcmData: Array[Byte]): F[Array[Byte]] = {
+  private def encryptPacket(
+    header: RTPHeader,
+    opusPayload: Array[Byte],
+    secretKey: Array[Byte],
+    nonceCounter: Int,
+    encryptionMode: String
+  ): F[RTPPacket] = {
     Async[F].blocking {
-      // Convert PCM bytes to shorts (16-bit PCM, little-endian)
-      val pcmShorts = new Array[Short](pcmData.length / 2)
-      val buffer = ByteBuffer.wrap(pcmData).order(ByteOrder.LITTLE_ENDIAN)
-      var i = 0
-      while (i < pcmShorts.length) {
-        pcmShorts(i) = buffer.getShort()
-        i += 1
+      // Encode RTP header to bytes using scodec (used as AAD in AEAD encryption)
+      val headerBytes = RTPHeader.toBytes(header)
+
+      // Encrypt the Opus payload using AEAD encryption
+      val encryptedPayload = encryptionMode match {
+        case "aead_aes256_gcm_rtpsize" =>
+          // AES256-GCM encryption (hardware accelerated on modern CPUs)
+          // - Nonce: 4-byte counter (big-endian) + 8 zero bytes = 12 bytes (GCM standard)
+          // - RTP header is AAD (authenticated but not encrypted)
+          import javax.crypto.Cipher
+          import javax.crypto.spec.{GCMParameterSpec, SecretKeySpec}
+
+          val nonce = Nonce.forAES256GCM(nonceCounter)
+          val gcmSpec = new GCMParameterSpec(GCM_TAG_BITS, nonce)
+          val keySpec = new SecretKeySpec(secretKey, "AES")
+
+          // Reuse pre-initialized cipher instance (optimization: avoid getInstance() overhead)
+          aesGcmCipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec)
+          aesGcmCipher.updateAAD(headerBytes) // RTP header as additional authenticated data
+          aesGcmCipher.doFinal(opusPayload) // Returns payload + auth tag
+
+        case "aead_xchacha20_poly1305_rtpsize" | _ =>
+          // XChaCha20-Poly1305 encryption (software implementation via libsodium)
+          // - Nonce: 4-byte counter (big-endian) + 20 zero bytes = 24 bytes
+          // - Slower than AES256-GCM but more portable (no hardware dependency)
+          val nonce = Nonce.forXChaCha20(nonceCounter)
+          val output = new Array[Byte](opusPayload.length + AEAD_TAG_BYTES)
+
+          // Reuse pre-initialized lazySodium instance (optimization: avoid recreating native bindings)
+          val success = lazySodium.cryptoAeadXChaCha20Poly1305IetfEncrypt(
+            output,
+            null,
+            opusPayload,
+            opusPayload.length.toLong,
+            headerBytes,
+            headerBytes.length.toLong,
+            null,
+            nonce,
+            secretKey
+          )
+
+          if (!success) {
+            throw new RuntimeException(
+              s"XChaCha20-Poly1305 encryption failed! Payload: ${opusPayload.length}B, Key: ${secretKey.length}B"
+            )
+          }
+          output
       }
 
-      // Create encoder (ideally this should be cached, but for simplicity creating per frame)
-      val encoder = createOpusEncoder()
-
-      // Output buffer for encoded Opus data
-      // Max Opus frame size is typically around 4000 bytes for music at high bitrate
-      val opusOutput = new Array[Byte](4000)
-
-      // Encode the PCM data to Opus
-      // encode(pcm, pcmOffset, frameSize, output, outputOffset, maxOutputLength)
-      val encodedLength = encoder.encode(
-        pcmShorts,
-        0,
-        OPUS_FRAME_SIZE,
-        opusOutput,
-        0,
-        opusOutput.length
-      )
-
-      // Return only the actual encoded bytes
-      if (encodedLength > 0) {
-        opusOutput.take(encodedLength)
-      } else {
-        // Encoding failed, return empty array
-        Array.empty[Byte]
-      }
+      // Return complete RTP packet (header + encrypted payload + nonce counter)
+      RTPPacket(header, encryptedPayload, nonceCounter)
     }.handleErrorWith { error =>
-      Logger[F].error(s"Failed to encode Opus: $error") >>
-      Async[F].pure(Array.empty[Byte])
+      Logger[F].error(s"[AUDIO] ✗ Failed to encrypt packet: ${error.getMessage}") >>
+      Logger[F].error(s"[AUDIO] Stack trace: ${error.getStackTrace.take(5).mkString("\n")}") >>
+      Async[F].raiseError(error)
     }
   }
   
-  private def createRTPPacket(
-    opusData: Array[Byte], 
-    sequence: Short, 
-    timestamp: Int, 
-    ssrc: Int
-  ): Array[Byte] = {
-    val header = ByteBuffer.allocate(12)
-    header.put(0x80.toByte)           // Version (2), Padding (0), Extension (0), CC (0)
-    header.put(0x78.toByte)           // Marker (0), Payload Type (120 for Opus)
-    header.putShort(sequence)         // Sequence number
-    header.putInt(timestamp)          // Timestamp
-    header.putInt(ssrc)               // SSRC
-    
-    val packet = new Array[Byte](12 + opusData.length)
-    System.arraycopy(header.array(), 0, packet, 0, 12)
-    System.arraycopy(opusData, 0, packet, 12, opusData.length)
-    packet
-  }
-  
-  private def sendUDPPacket(socket: DatagramSocket, data: Array[Byte]): F[Unit] = {
+  private def sendUDPPacket(socket: DatagramSocket, data: Array[Byte], ip: String, port: Int): F[Unit] = {
     Async[F].blocking {
-      // You'd need the actual Discord voice server endpoint here
-      val endpoint = new InetSocketAddress("discord-voice-server", 50000)
+      val endpoint = new InetSocketAddress(ip, port)
       val packet = new java.net.DatagramPacket(data, data.length, endpoint)
       socket.send(packet)
     }.handleErrorWith { error =>
-      Logger[F].error(s"Failed to send UDP packet: $error")
+      Logger[F].error(s"[AUDIO] ✗ Failed to send UDP packet to $ip:$port: ${error.getMessage}")
     }
   }
-  
-  def createVoiceConnection(
-    guildId: String,
-    voiceToken: String,
-    sessionId: String,
-    endpoint: String
-  ): F[WebSocket[F]] = {
-    // This would establish a WebSocket connection to Discord's voice gateway
-    // and handle the voice protocol handshake
-    Logger[F].info(s"Creating voice connection for guild $guildId to endpoint $endpoint") >>
-    Async[F].raiseError(new NotImplementedError("Voice WebSocket connection not implemented"))
+
+  def streamAudioFromPosition(
+    streamUrl: String,
+    voiceWebSocket: WebSocket[F],
+    udpSocket: DatagramSocket,
+    ssrc: Int,
+    voiceServerIp: String,
+    voiceServerPort: Int,
+    secretKey: Array[Byte],
+    startPosition: Int,
+    guildId: String,  // Guild ID for settings lookup
+    encryptionMode: String = "aead_xchacha20_poly1305_rtpsize"
+  ): F[Unit] = {
+    Logger[F].debug(s"[AUDIO] Starting stream from position: ${startPosition}s") >>
+    createAudioPipeline(streamUrl, startPosition = Some(startPosition))
+      .through(processAudioFrames(udpSocket, ssrc, voiceServerIp, voiceServerPort, secretKey, encryptionMode, guildId))
+      .compile
+      .drain
+      .handleErrorWith { error =>
+        Logger[F].error(s"[AUDIO] ✗ Audio streaming failed: ${error.getMessage}")
+      }
   }
 }

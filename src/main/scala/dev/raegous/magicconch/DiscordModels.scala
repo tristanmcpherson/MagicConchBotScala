@@ -11,14 +11,32 @@ case class DiscordMessage(
     timestamp: String,
     attachments: Option[List[Attachment]] = None,
     flags: Option[Int] = None,
-    guild_id: Option[String] = None
+    guild_id: Option[String] = None,
+    embeds: Option[List[MessageEmbed]] = None,
+    components: Option[List[MessageComponent]] = None,
+    // Additional fields that may be present
+    tts: Option[Boolean] = None,
+    mention_everyone: Option[Boolean] = None,
+    mentions: Option[List[io.circe.Json]] = None,
+    mention_roles: Option[List[String]] = None,
+    pinned: Option[Boolean] = None,
+    `type`: Option[Int] = None,
+    edited_timestamp: Option[String] = None
 )
 
 case class User(
     id: String,
     username: String,
     discriminator: String,
-    bot: Option[Boolean] = None
+    bot: Option[Boolean] = None,
+    avatar: Option[String] = None,
+    global_name: Option[String] = None,
+    public_flags: Option[Int] = None,
+    primary_guild: Option[io.circe.Json] = None,
+    display_name_styles: Option[io.circe.Json] = None,
+    collectibles: Option[io.circe.Json] = None,
+    clan: Option[io.circe.Json] = None,
+    avatar_decoration_data: Option[io.circe.Json] = None
 )
 
 case class GatewayPayload(
@@ -55,12 +73,18 @@ case class IdentifyPayload(
 )
 
 case class VoiceStateUpdate(
-    guild_id: String,
+    guild_id: Option[String] = None,  // Optional: present in VOICE_STATE_UPDATE events, absent in GUILD_CREATE.voice_states
     channel_id: Option[String],
     user_id: String,
     session_id: String,
     deaf: Boolean,
-    mute: Boolean
+    mute: Boolean,
+    self_deaf: Option[Boolean] = None,
+    self_mute: Option[Boolean] = None,
+    self_stream: Option[Boolean] = None,
+    self_video: Option[Boolean] = None,
+    suppress: Option[Boolean] = None,
+    request_to_speak_timestamp: Option[String] = None
 )
 
 case class VoiceServerUpdate(
@@ -93,17 +117,35 @@ case class MusicTrack(
 case class MusicQueue(
     tracks: List[MusicTrack],
     currentTrack: Option[MusicTrack],
-    isPlaying: Boolean
+    isPlaying: Boolean,
+    isPaused: Boolean = false,  // Track if playback is paused
+    currentPosition: Int = 0,  // Current playback position in seconds
+    startTime: Option[Long] = None,  // Epoch milliseconds when playback started
+    pauseTime: Option[Long] = None  // Epoch milliseconds when playback was paused
 )
 
 case class SlashCommand(
-    id: String,
-    name: String,
-    description: String,
-    options: Option[List[SlashCommandOption]] = None
+  id: String,
+  application_id: String,
+  version: String,
+  default_member_permissions: Option[String],
+  `type`: Int,
+  name: String,
+  description: String,
+  guild_id: String,
+  nsfw: Boolean,
+  options: Option[List[SlashCommandOption]] = None
 )
 
 case class SlashCommandOption(
+  `type`: Int,
+  name: String,
+  description: String,
+  required: Option[Boolean],
+  options: Option[Seq[SlashCommandOptionOption]]
+)
+
+case class SlashCommandOptionOption(
     name: String,
     description: String,
     `type`: Int,
@@ -117,7 +159,39 @@ case class InteractionResponse(
 
 case class InteractionResponseData(
     content: Option[String] = None,
-    flags: Option[Int] = None
+    flags: Option[Int] = None,
+    embeds: Option[List[MessageEmbed]] = None,
+    components: Option[List[MessageComponent]] = None
+)
+
+case class MessageEmbed(
+    title: Option[String] = None,
+    description: Option[String] = None,
+    color: Option[Int] = None,
+    fields: Option[List[EmbedField]] = None,
+    thumbnail: Option[EmbedThumbnail] = None,
+    `type`: Option[String] = None,
+    id: Option[String] = None,
+    content_scan_version: Option[Int] = None
+)
+
+case class EmbedField(
+    name: String,
+    value: String,
+    inline: Option[Boolean] = None
+)
+
+case class EmbedThumbnail(url: String)
+
+case class MessageComponent(
+    `type`: Int,  // 1 = Action Row, 2 = Button, 3 = Select Menu
+    components: Option[List[MessageComponent]] = None,  // For Action Row
+    style: Option[Int] = None,  // For Button: 1=Primary, 2=Secondary, 3=Success, 4=Danger, 5=Link
+    label: Option[String] = None,  // Button label
+    custom_id: Option[String] = None,  // Identifier for handling interactions
+    url: Option[String] = None,  // For Link-style buttons
+    id: Option[Int] = None,  // Discord-assigned ID for components in messages
+    disabled: Option[Boolean] = None
 )
 
 case class Interaction(
@@ -128,14 +202,30 @@ case class Interaction(
     guild_id: Option[String],
     channel_id: String,
     member: Option[GuildMember],
-    user: Option[User]
+    user: Option[User],
+    // Additional fields for button/component interactions
+    message: Option[DiscordMessage] = None,
+    locale: Option[String] = None,
+    guild_locale: Option[String] = None,
+    context: Option[Int] = None,
+    app_permissions: Option[String] = None,
+    authorizing_integration_owners: Option[io.circe.Json] = None,
+    attachment_size_limit: Option[Long] = None,
+    entitlements: Option[List[io.circe.Json]] = None,
+    entitlement_sku_ids: Option[List[String]] = None,
+    channel: Option[io.circe.Json] = None,
+    guild: Option[io.circe.Json] = None,
+    application_id: Option[String] = None,
+    version: Option[Int] = None
 )
 
 case class InteractionData(
-    id: String,
-    name: String,
-    `type`: Int,
-    options: Option[List[InteractionOption]] = None
+    id: Option[io.circe.Json] = None,  // Can be String (for slash commands) or Int (for components)
+    name: Option[String] = None,  // Only for slash commands
+    `type`: Option[Int] = None,  // Only for slash commands
+    options: Option[List[InteractionOption]] = None,
+    custom_id: Option[String] = None,  // For MESSAGE_COMPONENT interactions
+    component_type: Option[Int] = None  // For MESSAGE_COMPONENT interactions
 )
 
 case class InteractionOption(
@@ -148,7 +238,105 @@ case class GuildMember(
     user: Option[User],
     nick: Option[String],
     roles: List[String],
-    joined_at: String
+    joined_at: String,
+    premium_since: Option[String] = None,
+    permissions: Option[String] = None,
+    pending: Option[Boolean] = None,
+    mute: Option[Boolean] = None,
+    deaf: Option[Boolean] = None,
+    flags: Option[Int] = None,
+    avatar: Option[String] = None,
+    banner: Option[io.circe.Json] = None,
+    communication_disabled_until: Option[String] = None,
+    unusual_dm_activity_until: Option[io.circe.Json] = None,
+    display_name_styles: Option[io.circe.Json] = None,
+    collectibles: Option[io.circe.Json] = None
+)
+
+enum EncryptionMode(val value: String) {
+  case AeadAes256GcmRtpSize extends EncryptionMode("aead_aes256_gcm_rtpsize")
+  case AeadXChaCha20Poly1305RtpSize extends EncryptionMode("aead_xchacha20_poly1305_rtpsize")
+}
+
+object EncryptionMode {
+  def fromString(s: String): Option[EncryptionMode] = s match {
+    case "aead_aes256_gcm_rtpsize" => Some(AeadAes256GcmRtpSize)
+    case "aead_xchacha20_poly1305_rtpsize" => Some(AeadXChaCha20Poly1305RtpSize)
+    case _ => None
+  }
+
+  // Preferred modes in priority order
+  val preferredModes: List[EncryptionMode] = List(
+    AeadAes256GcmRtpSize,        // Hardware accelerated on modern CPUs
+    AeadXChaCha20Poly1305RtpSize // Fallback
+  )
+}
+
+case class GuildCreate(
+    id: String,
+    name: String,
+    icon: Option[String],
+    splash: Option[String],
+    discovery_splash: Option[String],
+    owner_id: String,
+    afk_channel_id: Option[String],
+    afk_timeout: Int,
+    verification_level: Int,
+    default_message_notifications: Int,
+    explicit_content_filter: Int,
+    roles: List[io.circe.Json],
+    emojis: List[io.circe.Json],
+    features: List[String],
+    mfa_level: Int,
+    system_channel_id: Option[String],
+    system_channel_flags: Int,
+    rules_channel_id: Option[String],
+    joined_at: String,
+    large: Boolean,
+    member_count: Int,
+    voice_states: Option[List[VoiceStateUpdate]],
+    members: Option[List[io.circe.Json]],
+    channels: Option[List[io.circe.Json]],
+    threads: Option[List[io.circe.Json]],
+    presences: Option[List[io.circe.Json]],
+    stage_instances: Option[List[io.circe.Json]],
+    guild_scheduled_events: Option[List[io.circe.Json]],
+    // Additional fields that may be present
+    max_presences: Option[Int] = None,
+    max_members: Option[Int] = None,
+    vanity_url_code: Option[String] = None,
+    description: Option[String] = None,
+    banner: Option[String] = None,
+    premium_tier: Option[Int] = None,
+    premium_subscription_count: Option[Int] = None,
+    preferred_locale: Option[String] = None,
+    public_updates_channel_id: Option[String] = None,
+    nsfw_level: Option[Int] = None,
+    stickers: Option[List[io.circe.Json]] = None,
+    premium_progress_bar_enabled: Option[Boolean] = None,
+    `lazy`: Option[Boolean] = None,
+    application_id: Option[String] = None,
+    unavailable: Option[Boolean] = None,
+    // Additional fields from newer Discord API versions
+    region: Option[String] = None,
+    hub_type: Option[io.circe.Json] = None,
+    profile: Option[io.circe.Json] = None,
+    inventory_settings: Option[io.circe.Json] = None,
+    safety_alerts_channel_id: Option[String] = None,
+    moderator_reporting: Option[io.circe.Json] = None,
+    latest_onboarding_question_id: Option[io.circe.Json] = None,
+    incidents_data: Option[io.circe.Json] = None,
+    max_stage_video_channel_users: Option[Int] = None,
+    max_video_channel_users: Option[Int] = None,
+    embedded_activities: Option[List[io.circe.Json]] = None,
+    activity_instances: Option[List[io.circe.Json]] = None,
+    soundboard_sounds: Option[List[io.circe.Json]] = None,
+    home_header: Option[io.circe.Json] = None,
+    owner_configured_content_level: Option[Int] = None,
+    application_command_counts: Option[io.circe.Json] = None,
+    version: Option[Long] = None,
+    nsfw: Option[Boolean] = None,
+    premium_features: Option[io.circe.Json] = None
 )
 
 object DiscordIntents {
@@ -220,6 +408,9 @@ object DiscordModels {
   
   given Decoder[SlashCommandOption] = deriveDecoder
   given Encoder[SlashCommandOption] = deriveEncoder
+
+  given Decoder[SlashCommandOptionOption] = deriveDecoder
+  given Encoder[SlashCommandOptionOption] = deriveEncoder
   
   given Decoder[InteractionResponse] = deriveDecoder
   given Encoder[InteractionResponse] = deriveEncoder
@@ -238,4 +429,19 @@ object DiscordModels {
   
   given Decoder[GuildMember] = deriveDecoder
   given Encoder[GuildMember] = deriveEncoder
+
+  given Decoder[GuildCreate] = deriveDecoder
+  given Encoder[GuildCreate] = deriveEncoder
+
+  given Decoder[MessageEmbed] = deriveDecoder
+  given Encoder[MessageEmbed] = deriveEncoder
+
+  given Decoder[EmbedField] = deriveDecoder
+  given Encoder[EmbedField] = deriveEncoder
+
+  given Decoder[EmbedThumbnail] = deriveDecoder
+  given Encoder[EmbedThumbnail] = deriveEncoder
+
+  given Decoder[MessageComponent] = deriveDecoder
+  given Encoder[MessageComponent] = deriveEncoder
 }

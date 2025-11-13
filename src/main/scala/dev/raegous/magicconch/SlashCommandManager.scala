@@ -7,300 +7,192 @@ import io.circe.syntax.*
 import DiscordModels.*
 import cats.implicits.*
 import DiscordModels.given
+import commands.*
 
-class SlashCommandManager[F[_]: Async](token: String, applicationId: String, discordApi: DiscordApiClient[F], voiceManager: VoiceManager[F])(using Logger[F]) {
-  
-  private val guildId = "644004109057261631" // Test server ID
-  
+class SlashCommandManager[F[_]: Async](
+  token: String,
+  applicationId: String,
+  discordApi: DiscordApiClient[F],
+  commandRegistry: CommandRegistry[F]
+)(using Logger[F]) {
+
+  // Optional: List of test guild IDs where commands should be registered for faster updates
+  // Guild commands update instantly, global commands can take up to 1 hour
+  // Set via DISCORD_TEST_GUILDS environment variable (comma-separated guild IDs)
+  private val testGuildIds: List[String] =
+    sys.env.get("DISCORD_TEST_GUILDS")
+      .map(_.split(",").map(_.trim).filter(_.nonEmpty).toList)
+      .getOrElse(List("820144843396612127", "644004109057261631"))
+
   def registerSlashCommands(): F[Unit] = {
-    val desiredCommands = List(
-      SlashCommand(
-        id = "",
-        name = "play",
-        description = "Play music from a YouTube URL",
-        options = Some(List(
-          SlashCommandOption(
-            name = "url",
-            description = "YouTube URL to play",
-            `type` = 3, // STRING type
-            required = Some(true)
-          )
-        ))
-      ),
-      SlashCommand(
-        id = "",
-        name = "stop",
-        description = "Stop the current music and clear queue"
-      ),
-      SlashCommand(
-        id = "",
-        name = "skip",
-        description = "Skip the current track"
-      ),
-      SlashCommand(
-        id = "",
-        name = "queue",
-        description = "Show the current music queue"
-      ),
-      SlashCommand(
-        id = "",
-        name = "join",
-        description = "Join your current voice channel"
-      ),
-      SlashCommand(
-        id = "",
-        name = "leave",
-        description = "Leave the voice channel"
-      ),
-      SlashCommand(
-        id = "",
-        name = "magicconch",
-        description = "Ask the Magic Conch Shell a question",
-        options = Some(List(
-          SlashCommandOption(
-            name = "question",
-            description = "Your question for the Magic Conch",
-            `type` = 3, // STRING type
-            required = Some(false)
-          )
-        ))
-      )
-    )
-    
-    discordApi.getGuildSlashCommands(applicationId, guildId).flatMap { existingCommands =>
-      val existingCommandNames = existingCommands.map(_.name).toSet
-      val commandsToRegister = desiredCommands.filterNot(cmd => existingCommandNames.contains(cmd.name))
-      
-      if (commandsToRegister.nonEmpty) {
-        Logger[F].info(s"Registering ${commandsToRegister.length} new commands: ${commandsToRegister.map(_.name).mkString(", ")}") >>
-        registerCommands(commandsToRegister)
-      } else {
-        Logger[F].info("All commands already registered, skipping registration")
-      }
+    if (testGuildIds.nonEmpty) {
+      Logger[F].info(s"Registering commands to ${testGuildIds.length} test guilds: ${testGuildIds.mkString(", ")}") >>
+      testGuildIds.traverse_(registerSlashCommandsForGuild) >>
+      Logger[F].info("All test guild commands registered")
+    } else {
+      Logger[F].info("Registering global commands (may take up to 1 hour to propagate)") >>
+      registerGlobalSlashCommands()
     }
   }
-  
-  private def registerCommands(commands: List[SlashCommand]): F[Unit] = {
-    commands.traverse_(registerCommand)
+
+  private def registerGlobalSlashCommands(): F[Unit] = {
+    // Get command definitions from the registry
+    val desiredCommands = commandRegistry.getSlashCommands
+    val desiredCommandNames = desiredCommands.map(_.name).toSet
+
+    discordApi.getGlobalSlashCommands(applicationId).flatMap { allCommands =>
+      // IMPORTANT: Only manage commands owned by THIS bot (filter by application_id)
+      val existingCommands = allCommands.filter(_.application_id == applicationId)
+      val existingCommandNames = existingCommands.map(_.name).toSet
+
+      // Commands to ADD: in desired but not in Discord
+      val commandsToRegister = desiredCommands.filterNot(cmd => existingCommandNames.contains(cmd.name))
+
+      // Commands to DELETE: in Discord but not in desired (removed from registry)
+      // Only delete commands owned by this bot!
+      val commandsToDelete = existingCommands.filterNot(cmd => desiredCommandNames.contains(cmd.name))
+
+      for {
+        _ <- Logger[F].info(s"Retrieved ${allCommands.length} total global commands (${existingCommands.length} owned by this bot)")
+
+        // Delete stale commands first
+        _ <- if (commandsToDelete.nonEmpty) {
+          Logger[F].info(s"Deleting ${commandsToDelete.length} stale commands: ${commandsToDelete.map(_.name).mkString(", ")}") >>
+          commandsToDelete.traverse_ { cmd =>
+            discordApi.deleteGlobalSlashCommand(applicationId, cmd.id, cmd.name)
+          }
+        } else {
+          Async[F].unit
+        }
+
+        // Then register new commands
+        _ <- if (commandsToRegister.nonEmpty) {
+          Logger[F].info(s"Registering ${commandsToRegister.length} new commands: ${commandsToRegister.map(_.name).mkString(", ")}") >>
+          commandsToRegister.traverse_(registerGlobalCommand)
+        } else {
+          Logger[F].info(s"${existingCommands.length} commands up to date")
+        }
+      } yield ()
+    }
   }
-  
-  private def registerCommand(command: SlashCommand): F[Unit] = {
+
+  private def registerSlashCommandsForGuild(guildId: String): F[Unit] = {
+    // Get command definitions from the registry
+    val desiredCommands = commandRegistry.getSlashCommands
+    val desiredCommandNames = desiredCommands.map(_.name).toSet
+
+    discordApi.getGuildSlashCommands(applicationId, guildId).flatMap { allCommands =>
+      // IMPORTANT: Only manage commands owned by THIS bot (filter by application_id)
+      val existingCommands = allCommands.filter(_.application_id == applicationId)
+      val existingCommandNames = existingCommands.map(_.name).toSet
+
+      // Commands to ADD: in desired but not in Discord
+      val commandsToRegister = desiredCommands.filterNot(cmd => existingCommandNames.contains(cmd.name))
+
+      // Commands to DELETE: in Discord but not in desired (removed from registry)
+      // Only delete commands owned by this bot!
+      val commandsToDelete = existingCommands.filterNot(cmd => desiredCommandNames.contains(cmd.name))
+
+      for {
+        _ <- Logger[F].info(s"Guild $guildId: Retrieved ${allCommands.length} total commands (${existingCommands.length} owned by this bot)")
+
+        // Delete stale commands first
+        _ <- if (commandsToDelete.nonEmpty) {
+          Logger[F].info(s"Guild $guildId: Deleting ${commandsToDelete.length} stale commands: ${commandsToDelete.map(_.name).mkString(", ")}") >>
+          commandsToDelete.traverse_ { cmd =>
+            discordApi.deleteGuildSlashCommand(applicationId, guildId, cmd.id, cmd.name)
+          }
+        } else {
+          Async[F].unit
+        }
+
+        // Then register new commands
+        _ <- if (commandsToRegister.nonEmpty) {
+          Logger[F].info(s"Guild $guildId: Registering ${commandsToRegister.length} new commands: ${commandsToRegister.map(_.name).mkString(", ")}") >>
+          commandsToRegister.traverse_(cmd => registerGuildCommand(guildId, cmd))
+        } else {
+          Logger[F].info(s"Guild $guildId: ${existingCommands.length} commands up to date")
+        }
+      } yield ()
+    }
+  }
+
+  private def registerGlobalCommand(command: SlashCommand): F[Unit] = {
     val commandData = Map(
       "name" -> command.name.asJson,
       "description" -> command.description.asJson,
       "options" -> command.options.asJson
     ).asJson
-    
-    discordApi.registerGuildSlashCommand(applicationId, guildId, commandData.noSpaces).flatMap { response =>
-      Logger[F].info(s"Registered guild slash command: ${command.name} - Response: $response")
-    }
-  }
-  
-  def handleSlashCommand(interaction: Interaction, gatewayWs: Option[sttp.ws.WebSocket[F]] = None): F[InteractionResponse] = {
-    val commandName = interaction.data.map(_.name)
-    
-    commandName match {
-      case Some("play") =>
-        handlePlaySlashCommand(interaction)
-      case Some("stop") =>
-        interaction.guild_id match {
-          case Some(guildId) =>
-            voiceManager.stopMusic(guildId) >>
-            voiceManager.clearQueue(guildId) >>
-            Async[F].pure(InteractionResponse(
-              `type` = 4,
-              data = Some(InteractionResponseData(content = Some("🛑 Music stopped and queue cleared!")))
-            ))
-          case None =>
-            Async[F].pure(InteractionResponse(
-              `type` = 4,
-              data = Some(InteractionResponseData(content = Some("❌ This command only works in a server!")))
-            ))
-        }
-      case Some("skip") =>
-        interaction.guild_id match {
-          case Some(guildId) =>
-            voiceManager.playNext(guildId).flatMap {
-              case Some(nextTrack) =>
-                voiceManager.startPlayingCurrent(guildId) >>
-                Async[F].pure(InteractionResponse(
-                  `type` = 4,
-                  data = Some(InteractionResponseData(content = Some(s"⏭️ Skipped! Now playing: **${nextTrack.title}**")))
-                ))
-              case None =>
-                Async[F].pure(InteractionResponse(
-                  `type` = 4,
-                  data = Some(InteractionResponseData(content = Some("❌ No more tracks in queue!")))
-                ))
-            }
-          case None =>
-            Async[F].pure(InteractionResponse(
-              `type` = 4,
-              data = Some(InteractionResponseData(content = Some("❌ This command only works in a server!")))
-            ))
-        }
-      case Some("queue") =>
-        interaction.guild_id match {
-          case Some(guildId) =>
-            voiceManager.getQueue(guildId).map { queue =>
-              val queueText = queue.currentTrack match {
-                case Some(current) =>
-                  val upcoming = if (queue.tracks.isEmpty) {
-                    "Empty"
-                  } else {
-                    queue.tracks.take(10).zipWithIndex.map { case (track, idx) =>
-                      s"${idx + 1}. ${track.title} (requested by ${track.requestedBy})"
-                    }.mkString("\n")
-                  }
-                  s"🎵 **Now Playing:** ${current.title}\n\n**Queue (${queue.tracks.length} tracks):**\n$upcoming"
-                case None =>
-                  if (queue.tracks.isEmpty) {
-                    "🎵 Queue is empty. Use `/play <youtube-url>` to add songs!"
-                  } else {
-                    val upcoming = queue.tracks.take(10).zipWithIndex.map { case (track, idx) =>
-                      s"${idx + 1}. ${track.title} (requested by ${track.requestedBy})"
-                    }.mkString("\n")
-                    s"🎵 **Queue (${queue.tracks.length} tracks):**\n$upcoming"
-                  }
-              }
-              InteractionResponse(
-                `type` = 4,
-                data = Some(InteractionResponseData(content = Some(queueText)))
-              )
-            }
-          case None =>
-            Async[F].pure(InteractionResponse(
-              `type` = 4,
-              data = Some(InteractionResponseData(content = Some("❌ This command only works in a server!")))
-            ))
-        }
-      case Some("join") =>
-        handleJoinSlashCommand(interaction, gatewayWs)
-      case Some("leave") =>
-        (interaction.guild_id, gatewayWs) match {
-          case (Some(guildId), Some(ws)) =>
-            voiceManager.leaveVoiceChannel(guildId, ws) >>
-            Async[F].pure(InteractionResponse(
-              `type` = 4,
-              data = Some(InteractionResponseData(content = Some("👋 Left voice channel!")))
-            ))
-          case (None, _) =>
-            Async[F].pure(InteractionResponse(
-              `type` = 4,
-              data = Some(InteractionResponseData(content = Some("❌ This command only works in a server!")))
-            ))
-          case (_, None) =>
-            Async[F].pure(InteractionResponse(
-              `type` = 4,
-              data = Some(InteractionResponseData(content = Some("❌ Gateway connection not available")))
-            ))
-        }
-      case Some("magicconch") =>
-        handleMagicConchSlashCommand(interaction)
-      case _ =>
-        Async[F].pure(InteractionResponse(
-          `type` = 4,
-          data = Some(InteractionResponseData(content = Some("Unknown command")))
-        ))
-    }
-  }
-  
-  private def handlePlaySlashCommand(interaction: Interaction): F[InteractionResponse] = {
-    interaction.guild_id match {
-      case Some(guildId) =>
-        val url = extractOptionValue(interaction, "url").getOrElse("")
-        val requestedBy = interaction.member.flatMap(_.user.map(_.username))
-          .orElse(interaction.user.map(_.username))
-          .getOrElse("Unknown")
 
-        if (url.contains("youtube.com") || url.contains("youtu.be")) {
-          voiceManager.extractAudioFromYoutube(url).flatMap {
-            case Some(track) =>
-              val trackWithUser = track.copy(requestedBy = requestedBy)
-              voiceManager.addToQueue(guildId, trackWithUser) >>
-              Async[F].pure(InteractionResponse(
-                `type` = 4,
-                data = Some(InteractionResponseData(content = Some(s"🎵 Added to queue: **${track.title}**")))
-              ))
-            case None =>
-              Async[F].pure(InteractionResponse(
-                `type` = 4,
-                data = Some(InteractionResponseData(content = Some("❌ Failed to extract audio from URL. Make sure it's a valid YouTube video!")))
-              ))
-          }
-        } else {
-          Async[F].pure(InteractionResponse(
-            `type` = 4,
-            data = Some(InteractionResponseData(content = Some("❌ Please provide a valid YouTube URL")))
-          ))
-        }
-      case None =>
-        Async[F].pure(InteractionResponse(
-          `type` = 4,
-          data = Some(InteractionResponseData(content = Some("❌ This command only works in a server!")))
-        ))
-    }
+    discordApi
+      .registerGlobalSlashCommand(applicationId, commandData.noSpaces)
+      .void
   }
-  
-  private def handleJoinSlashCommand(interaction: Interaction, gatewayWs: Option[sttp.ws.WebSocket[F]]): F[InteractionResponse] = {
-    (gatewayWs, interaction.guild_id) match {
-      case (Some(ws), Some(guildId)) =>
+
+  private def registerGuildCommand(guildId: String, command: SlashCommand): F[Unit] = {
+    val commandData = Map(
+      "name" -> command.name.asJson,
+      "description" -> command.description.asJson,
+      "options" -> command.options.asJson
+    ).asJson
+
+    discordApi
+      .registerGuildSlashCommand(applicationId, guildId, commandData.noSpaces)
+      .void
+  }
+
+  def handleSlashCommand(interaction: Interaction, gatewayWs: Option[sttp.ws.WebSocket[F]] = None): F[InteractionResponse] = {
+    val commandName = interaction.data.flatMap(_.name).getOrElse("")
+
+    (interaction.guild_id, commandRegistry.hasCommand(commandName)) match {
+      case (Some(guildId), true) =>
         val userId = interaction.member.flatMap(_.user.map(_.id))
           .orElse(interaction.user.map(_.id))
           .getOrElse("")
 
-        Logger[F].info(s"Looking up voice channel for user $userId") >>
-        voiceManager.getUserVoiceChannel(userId).flatMap {
-          case Some(channelId) =>
-            Logger[F].info(s"User $userId is in voice channel $channelId, joining...") >>
-            voiceManager.joinVoiceChannel(guildId, channelId, ws) >>
-            Async[F].pure(InteractionResponse(
-              `type` = 4,
-              data = Some(InteractionResponseData(content = Some(s"🔊 Joining your voice channel...")))
+        val username = interaction.member.flatMap(_.user.map(_.username))
+          .orElse(interaction.user.map(_.username))
+          .getOrElse("Unknown")
+
+        // Extract command arguments from interaction options
+        val args = extractCommandArgs(interaction)
+
+        val context = CommandContext[F](
+          guildId = guildId,
+          userId = userId,
+          channelId = interaction.channel_id,
+          username = username,
+          gatewayWs = gatewayWs,
+          args = args
+        )
+
+        commandRegistry.execute(commandName, context).flatMap { result =>
+          Logger[F].info(s"Command result - message: ${result.message}, embeds: ${result.embeds.map(_.size)}, components: ${result.components.map(_.size)}") >>
+          Async[F].pure(InteractionResponse(
+            `type` = 4,
+            data = Some(InteractionResponseData(
+              content = Some(result.message),
+              embeds = result.embeds,
+              components = result.components
             ))
-          case None =>
-            Logger[F].info(s"No voice channel found for user $userId") >>
-            Async[F].pure(InteractionResponse(
-              `type` = 4,
-              data = Some(InteractionResponseData(content = Some("❌ You need to be in a voice channel first!")))
-            ))
+          ))
         }
       case (None, _) =>
         Async[F].pure(InteractionResponse(
           `type` = 4,
-          data = Some(InteractionResponseData(content = Some("❌ Gateway connection not available")))
+          data = Some(InteractionResponseData(content = Some("❌ This command only works in a server!")))
         ))
-      case (_, None) =>
+      case (_, false) =>
         Async[F].pure(InteractionResponse(
           `type` = 4,
-          data = Some(InteractionResponseData(content = Some("❌ This command only works in a server!")))
+          data = Some(InteractionResponseData(content = Some(s"❌ Unknown command: $commandName")))
         ))
     }
   }
 
-  private def handleMagicConchSlashCommand(interaction: Interaction): F[InteractionResponse] = {
-    val responses = List(
-      "Maybe someday.",
-      "Nothing.",
-      "Neither.", 
-      "I don't think so.",
-      "No.",
-      "Yes.",
-      "Try asking again."
-    )
-    val response = responses(scala.util.Random.nextInt(responses.length))
-    Async[F].pure(InteractionResponse(
-      `type` = 4,
-      data = Some(InteractionResponseData(content = Some(s"🐚 The Magic Conch says: **$response**")))
-    ))
-  }
-  
-  private def extractOptionValue(interaction: Interaction, optionName: String): Option[String] = {
-    for {
-      data <- interaction.data
-      options <- data.options
-      option <- options.find(_.name == optionName)
-      value <- option.value
-    } yield value
+  private def extractCommandArgs(interaction: Interaction): Map[String, String] = {
+    interaction.data.flatMap(_.options).getOrElse(List.empty).flatMap { option =>
+      option.value.map(value => option.name -> value)
+    }.toMap
   }
 }

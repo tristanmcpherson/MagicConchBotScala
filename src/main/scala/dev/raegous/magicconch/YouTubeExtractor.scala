@@ -28,16 +28,13 @@ class YouTubeExtractor[F[_]: Async: Processes](using Logger[F]) {
       "--format", "bestaudio[ext=opus]/bestaudio[ext=webm]/bestaudio",
       url
     )
-    
-    runCommand(ytDlpCommand).flatMap {
-      case Some(output) =>
-        val streamUrl = output.trim
-        Logger[F].info(s"Extracted audio stream URL: $streamUrl") >>
-        Async[F].pure(Some(streamUrl))
-      case None =>
-        Logger[F].error(s"Failed to extract audio stream URL from: $url") >>
-        Async[F].pure(None)
-    }
+
+    runCommand(ytDlpCommand)
+      .map(_.map(_.trim))
+      .flatTap {
+        case Some(streamUrl) => Logger[F].info(s"Extracted audio stream URL: $streamUrl")
+        case None => Logger[F].error(s"Failed to extract audio stream URL from: $url")
+      }
   }
   
   private def extractWithYtDlp(url: String): F[Option[MusicTrack]] = {
@@ -47,14 +44,13 @@ class YouTubeExtractor[F[_]: Async: Processes](using Logger[F]) {
       "--no-playlist",
       url
     )
-    
-    runCommand(ytDlpCommand).flatMap {
-      case Some(jsonOutput) =>
-        parseTrackInfo(jsonOutput, url)
-      case None =>
-        Logger[F].error(s"Failed to extract info from YouTube URL: $url") >>
-        Async[F].pure(None)
-    }
+
+    runCommand(ytDlpCommand)
+      .flatMap(_.traverse(jsonOutput => parseTrackInfo(jsonOutput, url)))
+      .flatTap {
+        case None => Logger[F].error(s"Failed to extract info from YouTube URL: $url")
+        case _ => Async[F].unit
+      }
   }
   
   private def parseTrackInfo(jsonOutput: String, originalUrl: String): F[Option[MusicTrack]] = {
@@ -111,15 +107,9 @@ class YouTubeExtractor[F[_]: Async: Processes](using Logger[F]) {
       "--get-url",
       playlistUrl
     )
-    
-    runCommand(ytDlpCommand).flatMap {
-      case Some(output) =>
-        val urls = output.split("\n").filter(_.trim.nonEmpty).toList
-        Logger[F].info(s"Extracted ${urls.length} URLs from playlist") >>
-        Async[F].pure(urls)
-      case None =>
-        Logger[F].error(s"Failed to extract playlist URLs from: $playlistUrl") >>
-        Async[F].pure(List.empty)
-    }
+
+    runCommand(ytDlpCommand)
+      .map(_.fold(List.empty[String])(_.split("\n").filter(_.trim.nonEmpty).toList))
+      .flatTap(urls => Logger[F].info(s"Extracted ${urls.length} URLs from playlist"))
   }
 }
