@@ -3,13 +3,19 @@ package dev.raegous.magicconch.commands
 import cats.effect.*
 import cats.effect.implicits.*
 import cats.implicits.*
+import dev.raegous.magicconch.*
+import dev.raegous.magicconch.audio.VoiceManager
+import dev.raegous.magicconch.music.YouTubeSearchClient
 import org.typelevel.log4cats.Logger
-import dev.raegous.magicconch.{DiscordModels, GuildSettingsManager, SlashCommand, VoiceManager, YouTubeSearchClient}
+import dev.raegous.magicconch.discord.*
+import dev.raegous.magicconch.guilds.GuildSettingsManager
 
 class CommandRegistry[F[_]: Async](
   voiceManager: VoiceManager[F],
   youtubeSearch: YouTubeSearchClient[F],
-  guildSettings: GuildSettingsManager[F]
+  guildSettings: GuildSettingsManager[F],
+  discordApi: DiscordApiClient[F],
+  applicationId: String
 )(using Logger[F]) {
 
   private val commands: Map[String, Command[F]] = Map(
@@ -21,6 +27,16 @@ class CommandRegistry[F[_]: Async](
     "magicconch" -> new MagicConchCommand[F](),
     "search" -> new SearchCommand[F](voiceManager, youtubeSearch)
   )
+
+  /**
+   * Interaction router for handling component interactions (buttons, select menus)
+   */
+  val interactionRouter: InteractionRouter[F] = {
+    val searchHandler = new SearchInteractionHandler[F](voiceManager, discordApi, applicationId)
+    val playerHandler = new PlayerInteractionHandler[F](voiceManager, discordApi, guildSettings)
+
+    InteractionRouter[F](searchHandler, playerHandler)
+  }
 
   def execute(commandName: String, context: CommandContext[F]): F[CommandResult] = {
     commands.get(commandName.toLowerCase).fold(

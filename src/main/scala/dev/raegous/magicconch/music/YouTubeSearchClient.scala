@@ -1,14 +1,13 @@
-package dev.raegous.magicconch
+package dev.raegous.magicconch.music
 
 import cats.effect.*
 import cats.implicits.*
-import org.typelevel.log4cats.Logger
-import org.http4s.client.Client
-import org.http4s.circe.*
-import org.http4s.*
 import io.circe.generic.auto.*
-import io.circe.syntax.*
 import io.circe.{Decoder, Encoder}
+import org.http4s.*
+import org.http4s.circe.*
+import org.http4s.client.Client
+import org.typelevel.log4cats.Logger
 
 /**
  * YouTube Data API v3 client for searching videos.

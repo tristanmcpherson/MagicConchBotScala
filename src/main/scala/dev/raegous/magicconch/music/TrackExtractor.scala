@@ -4,8 +4,8 @@ import cats.effect.*
 import cats.implicits.*
 import org.typelevel.log4cats.Logger
 import fs2.io.process.Processes
-import dev.raegous.magicconch.MusicTrack
-import dev.raegous.magicconch.audio.{AudioSourceManager, DirectUrlAudioSource, YouTubeAudioSource, YtDlpExtractor}
+import dev.raegous.magicconch.audio.*
+import dev.raegous.magicconch.discord.MusicTrack
 
 /**
  * Extracts track information from URLs

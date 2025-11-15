@@ -2,13 +2,19 @@ package dev.raegous.magicconch
 
 import cats.effect.*
 import cats.implicits.*
+import cats.data.{EitherT, OptionT}
+import dev.raegous.magicconch.audio.VoiceManager
+import dev.raegous.magicconch.discord.*
 import org.typelevel.log4cats.Logger
 import sttp.ws.WebSocket
 import io.circe.parser.*
 import io.circe.syntax.*
 import io.circe.Printer
-import DiscordModels.*
-import DiscordModels.given
+import io.circe.DecodingFailure
+import dev.raegous.magicconch.discord.DiscordModels.*
+import dev.raegous.magicconch.discord.DiscordModels.given
+import dev.raegous.magicconch.guilds.{GuildSettingsManager, GuildTracker}
+import dev.raegous.magicconch.music.YouTubeSearchResult
 
 object GatewayEventHandler {
   def make[F[_]: Async](
@@ -19,7 +25,8 @@ object GatewayEventHandler {
     slashCommandManager: SlashCommandManager[F],
     discordApi: DiscordApiClient[F],
     guildTracker: GuildTracker[F],
-    guildSettings: GuildSettingsManager[F]
+    guildSettings: GuildSettingsManager[F],
+    commandRegistry: commands.CommandRegistry[F]
   )(using Logger[F]): Resource[F, GatewayEventHandler[F]] = {
     Resource.eval {
       for {
@@ -34,6 +41,7 @@ object GatewayEventHandler {
         discordApi,
         guildTracker,
         guildSettings,
+        commandRegistry,
         botUserIdRef,
         lastSeqRef
       )
@@ -50,6 +58,7 @@ class GatewayEventHandler[F[_]: Async] private (
   discordApi: DiscordApiClient[F],
   guildTracker: GuildTracker[F],
   guildSettings: GuildSettingsManager[F],
+  commandRegistry: commands.CommandRegistry[F],
   private val botUserIdRef: Ref[F, Option[String]],
   private val lastSeqRef: Ref[F, Option[Int]]
 )(using Logger[F]) {
@@ -114,30 +123,7 @@ class GatewayEventHandler[F[_]: Async] private (
           )
           .getOrElse(Async[F].pure(PayloadResult()))
       case Some("GUILD_CREATE") =>
-        (payload.d match {
-          case Some(guildJson) =>
-            guildJson.as[GuildCreate] match {
-              case Right(guild) =>
-                // Track this guild for the dashboard
-                guildTracker.addGuild(guild.id, guild.name, guild.member_count) >>
-                guild.voice_states.map { voiceStates =>
-                  if (voiceStates.nonEmpty) {
-                    voiceManager.populateVoiceStates(voiceStates)
-                  } else {
-                    Logger[F].warn(s"GUILD_CREATE for ${guild.name} has EMPTY voice_states array - Check Discord Developer Portal: Bot -> Privileged Gateway Intents -> 'Server Members Intent' must be ENABLED") >>
-                    Async[F].unit
-                  }
-                }.getOrElse(
-                  Logger[F].error(s"GUILD_CREATE for ${guild.name} is MISSING voice_states field entirely!") >>
-                  Async[F].unit
-                )
-              case Left(error) =>
-                Logger[F].error(s"Failed to parse GUILD_CREATE event: ${error.getMessage}") >>
-                Logger[F].error(s"Decode failure history: ${error.history.mkString(" -> ")}")
-            }
-          case None =>
-            Logger[F].error("GUILD_CREATE event missing data field")
-        }).as(PayloadResult())
+        handleGuildCreate(payload).as(PayloadResult())
       case Some("MESSAGE_CREATE") =>
         payload.d
           .flatMap(_.as[DiscordMessage].toOption)
@@ -157,34 +143,70 @@ class GatewayEventHandler[F[_]: Async] private (
           .getOrElse(Async[F].pure(()))
           .as(PayloadResult())
       case Some("INTERACTION_CREATE") =>
-        Logger[F].info(s"Received INTERACTION_CREATE event") >>
-        Logger[F].info(s"Raw interaction payload: ${payload.d.map(_.noSpaces).getOrElse("No data")}") >>
-        (payload.d.flatMap(_.as[Interaction].toOption) match {
-          case Some(interaction) =>
-            Logger[F].info(s"Parsed interaction - type: ${interaction.`type`}, command: ${interaction.data.map(_.name).getOrElse("N/A")}") >>
-            (interaction.`type` match {
-              case 2 => // APPLICATION_COMMAND (slash commands)
-                Logger[F].info(s"Handling slash command: ${interaction.data.map(_.name).getOrElse("unknown")}") >>
-                slashCommandManager.handleSlashCommand(interaction, Some(ws)).flatMap { response =>
-                  Logger[F].info(s"Got response from slash command handler, sending to Discord") >>
-                  discordApi.sendInteractionResponse(interaction.id, interaction.token, response.asJson.printWith(jsonPrinter))
-                }
-              case 3 => // MESSAGE_COMPONENT (button clicks)
-                handleMessageComponent(interaction, Some(ws))
-              case _ =>
-                Logger[F].warn(s"Unknown interaction type: ${interaction.`type`}")
-            })
-          case None =>
-            Logger[F].error("Failed to parse INTERACTION_CREATE - interaction data could not be decoded") >>
-            Async[F].pure(())
-        }).as(PayloadResult())
+        handleInteractionCreate(payload, ws).as(PayloadResult())
       case Some("VOICE_CHANNEL_START_TIME_UPDATE") | Some("VOICE_CHANNEL_STATUS_UPDATE") =>
         // Ignore these voice channel events for now
         Async[F].pure(PayloadResult())
       case t => Logger[F].debug(s"Unhandled payload type: $t") >> Async[F].pure(PayloadResult())
     }
   }
-  
+
+  private def handleGuildCreate(payload: GatewayPayload): F[Unit] = {
+    payload.d.fold(
+      Logger[F].error("GUILD_CREATE event missing data field")
+    )(guildJson =>
+      guildJson.as[GuildCreate].fold(
+        error =>
+          Logger[F].error(s"Failed to parse GUILD_CREATE event: ${error.getMessage}") >>
+          Logger[F].error(s"Decode failure history: ${error.history.mkString(" -> ")}"),
+        guild => processGuildCreate(guild)
+      )
+    )
+  }
+
+  private def processGuildCreate(guild: GuildCreate): F[Unit] = {
+    guildTracker.addGuild(guild.id, guild.name, guild.member_count) >>
+    guild.voice_states.fold(
+      Logger[F].error(s"GUILD_CREATE for ${guild.name} is MISSING voice_states field entirely!") >>
+      Async[F].unit
+    )(voiceStates => handleVoiceStates(voiceStates, guild.name))
+  }
+
+  private def handleVoiceStates(voiceStates: List[VoiceStateUpdate], guildName: String): F[Unit] = {
+    Option.when(voiceStates.nonEmpty)(()).fold(
+      Logger[F].warn(s"GUILD_CREATE for $guildName has EMPTY voice_states array - Check Discord Developer Portal: Bot -> Privileged Gateway Intents -> 'Server Members Intent' must be ENABLED") >>
+      Async[F].unit
+    )(_ => voiceManager.populateVoiceStates(voiceStates))
+  }
+
+  private def handleInteractionCreate(payload: GatewayPayload, ws: WebSocket[F]): F[Unit] = {
+    Logger[F].info(s"Received INTERACTION_CREATE event") >>
+    Logger[F].info(s"Raw interaction payload: ${payload.d.map(_.noSpaces).getOrElse("No data")}") >>
+    payload.d
+      .flatMap(_.as[Interaction].toOption)
+      .fold(
+        Logger[F].error("Failed to parse INTERACTION_CREATE - interaction data could not be decoded") >>
+        Async[F].pure(())
+      )(interaction => processInteraction(interaction, ws))
+  }
+
+  private def processInteraction(interaction: Interaction, ws: WebSocket[F]): F[Unit] = {
+    Logger[F].info(s"Parsed interaction - type: ${interaction.`type`}, command: ${interaction.data.map(_.name).getOrElse("N/A")}") >>
+    (interaction.`type` match {
+      case 2 => handleSlashCommandInteraction(interaction, ws)
+      case 3 => handleMessageComponent(interaction, Some(ws))
+      case _ => Logger[F].warn(s"Unknown interaction type: ${interaction.`type`}")
+    })
+  }
+
+  private def handleSlashCommandInteraction(interaction: Interaction, ws: WebSocket[F]): F[Unit] = {
+    Logger[F].info(s"Handling slash command: ${interaction.data.map(_.name).getOrElse("unknown")}") >>
+    slashCommandManager.handleSlashCommand(interaction, Some(ws)).flatMap { response =>
+      Logger[F].info(s"Got response from slash command handler, sending to Discord") >>
+      discordApi.sendInteractionResponse(interaction.id, interaction.token, response.asJson.printWith(jsonPrinter))
+    }
+  }
+
   def sendIdentify(ws: WebSocket[F]): F[Unit] = {
     import io.circe.syntax.*
     
@@ -284,7 +306,7 @@ class GatewayEventHandler[F[_]: Async] private (
   }
 
   private def processSelectedTrack(
-    selected: SearchResult,
+    selected: YouTubeSearchResult,
     userId: String,
     interaction: Interaction,
     wsOpt: Option[sttp.ws.WebSocket[F]]
@@ -425,30 +447,38 @@ class GatewayEventHandler[F[_]: Async] private (
   }
 
   private def sendPauseResumeResponse(interaction: Interaction, guildId: String, isPaused: Boolean): F[Unit] = {
+    val message = Option.when(isPaused)(()).fold("Playback resumed")(_ => "Playback paused")
     val response = InteractionResponse(
       `type` = 7,
       data = Some(InteractionResponseData(
-        content = Some(if (isPaused) "Playback paused" else "Playback resumed"),
+        content = Some(message),
         components = updatePauseResumeButtons(interaction, guildId, isPaused)
       ))
     )
     discordApi.sendInteractionResponse(interaction.id, interaction.token, response.asJson.printWith(jsonPrinter))
   }
 
-  private def updatePauseResumeButtons(interaction: Interaction, guildId: String, isPaused: Boolean): Option[List[MessageActionRow]] = {
+  private def updatePauseResumeButtons(interaction: Interaction, guildId: String, isPaused: Boolean): Option[List[MessageComponent]] = {
     interaction.message.flatMap(_.components).map { components =>
       components.map { row =>
         row.copy(components = row.components.map(_.map { button =>
-          if (button.custom_id.exists(id => id.startsWith("player_pause_") || id.startsWith("player_resume_"))) {
-            button.copy(
-              label = Some(if (isPaused) "Resume" else "Pause"),
-              custom_id = Some(s"player_${if (isPaused) "resume" else "pause"}_$guildId"),
-              style = Some(if (isPaused) 3 else 1)
-            )
-          } else button
+          Option.when(button.custom_id.exists(id => id.startsWith("player_pause_") || id.startsWith("player_resume_")))(()).fold(
+            button
+          )(_ => updatePauseResumeButton(button, guildId, isPaused))
         }))
       }
     }
+  }
+
+  private def updatePauseResumeButton(button: MessageComponent, guildId: String, isPaused: Boolean): MessageComponent = {
+    val label = Option.when(isPaused)(()).fold("Pause")(_ => "Resume")
+    val action = Option.when(isPaused)(()).fold("pause")(_ => "resume")
+    val style = Option.when(isPaused)(()).fold(1)(_ => 3)
+    button.copy(
+      label = Some(label),
+      custom_id = Some(s"player_${action}_$guildId"),
+      style = Some(style)
+    )
   }
 
   private def handlePlayerStop(customId: String, interaction: Interaction, wsOpt: Option[sttp.ws.WebSocket[F]]): F[Unit] = {
@@ -486,14 +516,13 @@ class GatewayEventHandler[F[_]: Async] private (
         queue <- voiceManager.getQueue(guildId)
         _ <- Option.when(queue.tracks.nonEmpty)(()).traverse(_ => voiceManager.skipTrack(guildId))
         newQueue <- voiceManager.getQueue(guildId)
+        message = newQueue.currentTrack.fold("Skipped! Queue is now empty")(track => s"Skipped! Now playing: **${track.title}**")
+        components = newQueue.currentTrack.fold(Some(List.empty[MessageComponent]))(_ => interaction.message.flatMap(_.components))
         response = InteractionResponse(
           `type` = 7,
           data = Some(InteractionResponseData(
-            content = Some(newQueue.currentTrack match {
-              case Some(track) => s"Skipped! Now playing: **${track.title}**"
-              case None => "Skipped! Queue is now empty"
-            }),
-            components = if (newQueue.currentTrack.isDefined) interaction.message.flatMap(_.components) else Some(List.empty)
+            content = Some(message),
+            components = components
           ))
         )
         _ <- discordApi.sendInteractionResponse(interaction.id, interaction.token, response.asJson.printWith(jsonPrinter))
@@ -501,22 +530,12 @@ class GatewayEventHandler[F[_]: Async] private (
     }
   }
 
+  /**
+   * Handle MESSAGE_COMPONENT interactions (button clicks, select menus)
+   *
+   * Delegates to the InteractionRouter which routes to appropriate handlers.
+   */
   private def handleMessageComponent(interaction: Interaction, wsOpt: Option[sttp.ws.WebSocket[F]]): F[Unit] = {
-    interaction.data.flatMap(_.custom_id) match {
-      case Some(customId) if customId.startsWith("search_select_") =>
-        handleSearchSelect(customId, interaction, wsOpt)
-      case Some(customId) if customId.startsWith("volume_") =>
-        handleVolumeControl(customId, interaction)
-      case Some(customId) if customId.startsWith("player_pause_") || customId.startsWith("player_resume_") =>
-        handlePlayerPauseResume(customId, interaction)
-      case Some(customId) if customId.startsWith("player_stop_") =>
-        handlePlayerStop(customId, interaction, wsOpt)
-      case Some(customId) if customId.startsWith("player_skip_") =>
-        handlePlayerSkip(customId, interaction)
-      case Some(customId) =>
-        Logger[F].warn(s"Unknown custom_id: $customId")
-      case None =>
-        Logger[F].warn("Message component interaction missing custom_id")
-    }
+    commandRegistry.interactionRouter.route(interaction, wsOpt)
   }
 }

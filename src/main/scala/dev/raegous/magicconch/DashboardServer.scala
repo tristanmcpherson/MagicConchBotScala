@@ -11,9 +11,12 @@ import org.http4s.ember.server.EmberServerBuilder
 import org.http4s.server.middleware.CORS
 import org.http4s.circe.CirceEntityCodec.*
 import com.comcast.ip4s.*
+import dev.raegous.magicconch.audio.VoiceManager
 import io.circe.syntax.*
 import io.circe.generic.auto.*
 import org.http4s.headers.*
+import dev.raegous.magicconch.discord.*
+import dev.raegous.magicconch.guilds.GuildTracker
 
 import scala.concurrent.duration.*
 

@@ -1,4 +1,4 @@
-package dev.raegous.magicconch
+package dev.raegous.magicconch.guilds
 
 import cats.effect.*
 import cats.implicits.*
@@ -10,7 +10,7 @@ import org.typelevel.log4cats.Logger
  * @param volume Volume multiplier (0.0 = mute, 1.0 = 100%, 2.0 = 200%)
  */
 case class GuildSettings(
-  volume: Double = 0.2
+  volume: Double = 0.1
   // Future settings can be added here:
   // eq: EQSettings = EQSettings.default,
   // audioQuality: AudioQuality = AudioQuality.High,

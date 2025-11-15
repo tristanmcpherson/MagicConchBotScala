@@ -4,7 +4,9 @@ import cats.effect.*
 import cats.implicits.*
 import org.typelevel.log4cats.Logger
 import fs2.io.process.Processes
-import dev.raegous.magicconch.{MusicTrack, MusicQueue, VoiceGateway}
+import dev.raegous.magicconch.audio.*
+import dev.raegous.magicconch.audio.internals.*
+import dev.raegous.magicconch.discord.*
 
 /**
  * Facade service for all music-related operations

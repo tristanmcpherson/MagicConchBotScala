@@ -3,10 +3,10 @@ package dev.raegous.magicconch.audio
 import cats.effect.*
 import cats.effect.std.Queue
 import cats.implicits.*
+import dev.raegous.magicconch.discord.*
 import org.typelevel.log4cats.Logger
 import fs2.Stream
 import fs2.io.process.{ProcessBuilder, Processes}
-import dev.raegous.magicconch.MusicTrack
 import io.circe.parser.*
 import io.circe.Json
 

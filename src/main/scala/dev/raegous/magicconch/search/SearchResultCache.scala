@@ -2,8 +2,8 @@ package dev.raegous.magicconch.search
 
 import cats.effect.*
 import cats.implicits.*
+import dev.raegous.magicconch.music.YouTubeSearchResult
 import org.typelevel.log4cats.Logger
-import dev.raegous.magicconch.YouTubeSearchResult
 
 /**
  * Caches YouTube search results by user ID

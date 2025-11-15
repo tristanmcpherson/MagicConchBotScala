@@ -3,7 +3,7 @@ package dev.raegous.magicconch.search
 import cats.effect.*
 import org.typelevel.log4cats.Logger
 import org.http4s.client.Client
-import dev.raegous.magicconch.{YouTubeSearchClient, YouTubeSearchResult}
+import dev.raegous.magicconch.music.{YouTubeSearchClient, YouTubeSearchResult}
 
 /**
  * Facade service for YouTube search operations

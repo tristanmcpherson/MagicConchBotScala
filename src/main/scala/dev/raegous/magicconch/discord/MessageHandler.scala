@@ -2,9 +2,10 @@ package dev.raegous.magicconch
 
 import cats.effect.*
 import cats.implicits.*
+import cats.data.OptionT
 import org.typelevel.log4cats.Logger
 import sttp.ws.WebSocket
-import DiscordModels.*
+import dev.raegous.magicconch.discord.*
 import commands.*
 
 class MessageHandler[F[_]: Async](
@@ -38,40 +39,42 @@ class MessageHandler[F[_]: Async](
       val commandName = parts(0).toLowerCase
       val argsString = if (parts.length > 1) parts(1) else ""
 
-      message.guild_id match {
-        case Some(guildId) if commandRegistry.hasCommand(commandName) =>
-          // Get the command and let it parse its own arguments
-          commandRegistry.getCommand(commandName) match {
-            case Some(command) =>
-              val args = command.parseTextArgs(argsString)
+      // Use OptionT to chain Option operations without nesting
+      val result = for {
+        guildId <- OptionT.fromOption[F](message.guild_id)
+        _ <- OptionT.fromOption[F](Option.when(commandRegistry.hasCommand(commandName))(()))
+        command <- OptionT.fromOption[F](commandRegistry.getCommand(commandName))
+      } yield {
+        val args = command.parseTextArgs(argsString)
+        val context = CommandContext[F](
+          guildId = guildId,
+          userId = message.author.id,
+          channelId = message.channel_id,
+          username = message.author.username,
+          gatewayWs = Some(ws),
+          args = args
+        )
 
-              val context = CommandContext[F](
-                guildId = guildId,
-                userId = message.author.id,
-                channelId = message.channel_id,
-                username = message.author.username,
-                gatewayWs = Some(ws),
-                args = args
-              )
+        commandRegistry.execute(commandName, context).flatMap { result =>
+          discordApi.sendRichMessage(
+            message.channel_id,
+            result.message,
+            result.embeds,
+            result.components
+          )
+        }
+      }
 
-              commandRegistry.execute(commandName, context).flatMap { result =>
-                discordApi.sendRichMessage(
-                  message.channel_id,
-                  result.message,
-                  result.embeds,
-                  result.components
-                )
-              }
-            case None =>
-              Async[F].pure(())
-          }
+      result.value.flatMap {
+        case Some(action) => action
         case None =>
-          discordApi.sendMessage(message.channel_id, "This command only works in a server!")
-        case _ =>
-          Async[F].pure(())
+          // If guild_id is missing, send error; otherwise silently ignore
+          message.guild_id.fold(
+            discordApi.sendMessage(message.channel_id, "This command only works in a server!")
+          )(_ => Async[F].unit)
       }
     } else {
-      Async[F].pure(())
+      Async[F].unit
     }
   }
 

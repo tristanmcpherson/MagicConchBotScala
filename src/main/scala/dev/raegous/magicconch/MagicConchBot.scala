@@ -2,6 +2,7 @@ package dev.raegous.magicconch
 
 import cats.effect.*
 import cats.implicits.*
+import dev.raegous.magicconch.discord.*
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import sttp.client4.httpclient.fs2.HttpClientFs2Backend

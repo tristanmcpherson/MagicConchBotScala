@@ -5,7 +5,7 @@ ThisBuild / scalaVersion := "3.3.0"
 lazy val root = (project in file("."))
   .settings(
     name := "magicconch",
-    scalacOptions ++= Seq("-Xmax-inlines", "64"),
+    scalacOptions ++= Seq("-Xmax-inlines", "64", "-deprecation", "-feature", "-language:implicitConversions"),
     assembly / assemblyMergeStrategy := {
       case "META-INF/MANIFEST.MF" => MergeStrategy.discard
       case "META-INF/services/org.apache.logging.log4j.spi.Provider" => MergeStrategy.first
@@ -36,6 +36,8 @@ lazy val root = (project in file("."))
       "net.java.dev.jna" % "jna" % "5.13.0",         // Required by lazysodium
       "org.scodec" %% "scodec-core" % "2.2.2",       // Binary encoding/decoding
       "org.scodec" %% "scodec-cats" % "1.2.0",       // Cats integration for scodec
-      "org.scalameta" %% "munit" % "1.0.0" % Test
+      "org.scalameta" %% "munit" % "1.0.0" % Test,
+      "org.typelevel" %% "munit-cats-effect" % "2.1.0" % Test,
+      "com.bdmendes" %% "smockito" % "2.2.1" % Test,
     )
   )

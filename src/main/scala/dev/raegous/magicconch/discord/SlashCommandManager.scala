@@ -4,9 +4,10 @@ import cats.effect.*
 import org.typelevel.log4cats.Logger
 import sttp.client4.*
 import io.circe.syntax.*
-import DiscordModels.*
 import cats.implicits.*
-import DiscordModels.given
+import dev.raegous.magicconch.discord.*
+import dev.raegous.magicconch.discord.DiscordModels.*
+import dev.raegous.magicconch.discord.DiscordModels.given
 import commands.*
 
 class SlashCommandManager[F[_]: Async](

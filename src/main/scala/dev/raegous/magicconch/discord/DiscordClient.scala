@@ -1,4 +1,4 @@
-package dev.raegous.magicconch
+package dev.raegous.magicconch.discord
 
 import cats.effect.*
 import cats.effect.implicits.*
@@ -18,6 +18,10 @@ import fs2.io.process.Processes
 import sttp.client4.ws.async.*
 import DiscordModels.*
 import DiscordModels.given
+import dev.raegous.magicconch.*
+import dev.raegous.magicconch.audio.VoiceManager
+import dev.raegous.magicconch.guilds.{GuildSettingsManager, GuildTracker}
+import dev.raegous.magicconch.music.*
 
 case class PayloadResult(
   heartbeatInterval: Option[Int] = None,
@@ -42,10 +46,10 @@ object DiscordClient {
         guildTracker <- GuildTracker.make[F].allocated.map(_._1)
         discordApi = new DiscordApiClient[F](token, backend)
         youtubeSearch = new YouTubeSearchClient[F](youtubeApiKey, httpClient)
-        commandRegistry = new commands.CommandRegistry[F](voiceManager, youtubeSearch, guildSettings)
+        commandRegistry = new commands.CommandRegistry[F](voiceManager, youtubeSearch, guildSettings, discordApi, applicationId)
         messageHandler = new MessageHandler[F](discordApi, commandRegistry)
         slashCommandManager = new SlashCommandManager[F](token, applicationId, discordApi, commandRegistry)
-        eventHandler <- GatewayEventHandler.make[F](token, applicationId, messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings).allocated.map(_._1)
+        eventHandler <- GatewayEventHandler.make[F](token, applicationId, messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry).allocated.map(_._1)
       } yield new DiscordClient[F](
         token,
         applicationId,

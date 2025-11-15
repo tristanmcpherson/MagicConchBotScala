@@ -4,7 +4,7 @@ import cats.effect.*
 import cats.effect.implicits.*
 import cats.implicits.*
 import org.typelevel.log4cats.Logger
-import dev.raegous.magicconch.VoiceGateway
+import dev.raegous.magicconch.audio.internals.*
 
 /**
  * Controls music playback for guilds

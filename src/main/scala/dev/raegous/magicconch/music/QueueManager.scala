@@ -2,8 +2,8 @@ package dev.raegous.magicconch.music
 
 import cats.effect.*
 import cats.implicits.*
+import dev.raegous.magicconch.discord.*
 import org.typelevel.log4cats.Logger
-import dev.raegous.magicconch.{MusicTrack, MusicQueue}
 
 /**
  * Manages music queues for guilds

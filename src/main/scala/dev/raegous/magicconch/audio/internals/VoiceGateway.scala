@@ -1,4 +1,4 @@
-package dev.raegous.magicconch
+package dev.raegous.magicconch.audio.internals
 
 import cats.effect.*
 import cats.effect.std.{Queue, Supervisor}
@@ -8,9 +8,10 @@ import sttp.client4.*
 import sttp.ws.WebSocket
 import io.circe.parser.*
 import io.circe.syntax.*
-import DiscordModels.*
+import dev.raegous.magicconch.discord.DiscordModels.*
 import cats.Applicative
 import cats.effect.implicits.*
+import dev.raegous.magicconch.discord.EncryptionMode
 import sttp.client4.ws.async.asWebSocket
 import fs2.Stream
 

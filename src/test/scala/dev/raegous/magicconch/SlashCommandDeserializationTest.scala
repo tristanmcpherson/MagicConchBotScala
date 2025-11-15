@@ -2,8 +2,9 @@ package dev.raegous.magicconch
 
 import io.circe.parser.*
 import io.circe.syntax.*
-import DiscordModels.*
-import DiscordModels.given
+import dev.raegous.magicconch.discord.DiscordModels.*
+import dev.raegous.magicconch.discord.DiscordModels.given
+import dev.raegous.magicconch.discord.*
 
 class SlashCommandDeserializationTest extends munit.FunSuite {
 

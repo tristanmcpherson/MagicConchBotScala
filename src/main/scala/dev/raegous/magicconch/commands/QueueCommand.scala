@@ -2,9 +2,11 @@ package dev.raegous.magicconch.commands
 
 import cats.effect.*
 import cats.implicits.*
+import dev.raegous.magicconch.*
+import dev.raegous.magicconch.audio.VoiceManager
+import dev.raegous.magicconch.discord.DiscordModels.*
+import dev.raegous.magicconch.discord.*
 import org.typelevel.log4cats.Logger
-import dev.raegous.magicconch.{DiscordModels, MessageComponent, VoiceManager}
-import DiscordModels.*
 
 class QueueCommand[F[_]: Async](voiceManager: VoiceManager[F])(using Logger[F]) extends Command[F] {
   val name = "queue"
@@ -13,66 +15,72 @@ class QueueCommand[F[_]: Async](voiceManager: VoiceManager[F])(using Logger[F]) 
 
   def execute(context: CommandContext[F]): F[CommandResult] = {
     voiceManager.getQueue(context.guildId).map { queue =>
-      val queueText = queue.currentTrack match {
-        case Some(current) =>
-          val upcoming = if (queue.tracks.isEmpty) {
-            "Empty"
-          } else {
-            queue.tracks.take(10).zipWithIndex.map { case (track, idx) =>
-              s"${idx + 1}. ${track.title} (requested by ${track.requestedBy})"
-            }.mkString("\n")
-          }
-          s"🎵 **Now Playing:** ${current.title}\n\n**Queue (${queue.tracks.length} tracks):**\n$upcoming"
-        case None =>
-          if (queue.tracks.isEmpty) {
-            "🎵 Queue is empty. Use `/play <youtube-url>` to add songs!"
-          } else {
-            val upcoming = queue.tracks.take(10).zipWithIndex.map { case (track, idx) =>
-              s"${idx + 1}. ${track.title} (requested by ${track.requestedBy})"
-            }.mkString("\n")
-            s"🎵 **Queue (${queue.tracks.length} tracks):**\n$upcoming"
-          }
-      }
-
-      // Add control buttons if there's a track playing
-      val components = queue.currentTrack.map { _ =>
-        val hasQueue = queue.tracks.nonEmpty
-
-        // Pause/Resume button (style 1 = Primary/Blue, 3 = Success/Green)
-        val pauseButton = MessageComponent(
-          `type` = 2, // Button
-          style = Some(1), // Primary
-          label = Some("⏸ Pause"),
-          custom_id = Some(s"player_pause_${context.guildId}")
-        )
-
-        // Stop button (style 4 = Danger/Red)
-        val stopButton = MessageComponent(
-          `type` = 2,
-          style = Some(4), // Danger
-          label = Some("⏹ Stop"),
-          custom_id = Some(s"player_stop_${context.guildId}")
-        )
-
-        // Skip button (style 2 = Secondary/Gray) - only if there's a queue
-        val skipButton = MessageComponent(
-          `type` = 2,
-          style = Some(2), // Secondary
-          label = Some("⏭ Skip"),
-          custom_id = Some(s"player_skip_${context.guildId}"),
-          disabled = Some(!hasQueue)
-        )
-
-        // Action row with buttons
-        val actionRow = MessageComponent(
-          `type` = 1, // Action Row
-          components = Some(List(pauseButton, stopButton, skipButton))
-        )
-
-        List(actionRow)
-      }
-
+      val queueText = buildQueueText(queue)
+      val components = queue.currentTrack.map(_ => buildQueueControls(queue, context.guildId))
       CommandResult(queueText, components = components)
     }
+  }
+
+  private def buildQueueText(queue: MusicQueue): String = {
+    queue.currentTrack.fold(
+      buildEmptyQueueText(queue.tracks)
+    )(current => buildPlayingQueueText(current, queue.tracks))
+  }
+
+  private def buildEmptyQueueText(tracks: List[MusicTrack]): String = {
+    Option.when(tracks.isEmpty)(()).fold(
+      formatQueueList(tracks)
+    )(_ => "Queue is empty. Use `/play <youtube-url>` to add songs!")
+  }
+
+  private def buildPlayingQueueText(current: MusicTrack, tracks: List[MusicTrack]): String = {
+    val upcoming = Option.when(tracks.isEmpty)(()).fold(
+      formatTrackList(tracks)
+    )(_ => "Empty")
+    s"**Now Playing:** ${current.title}\n\n**Queue (${tracks.length} tracks):**\n$upcoming"
+  }
+
+  private def formatQueueList(tracks: List[MusicTrack]): String = {
+    val upcoming = formatTrackList(tracks)
+    s"**Queue (${tracks.length} tracks):**\n$upcoming"
+  }
+
+  private def formatTrackList(tracks: List[MusicTrack]): String = {
+    tracks.take(10).zipWithIndex.map { case (track, idx) =>
+      s"${idx + 1}. ${track.title} (requested by ${track.requestedBy})"
+    }.mkString("\n")
+  }
+
+  private def buildQueueControls(queue: MusicQueue, guildId: String): List[MessageComponent] = {
+    val hasQueue = queue.tracks.nonEmpty
+
+    val pauseButton = MessageComponent(
+      `type` = 2,
+      style = Some(1),
+      label = Some("Pause"),
+      custom_id = Some(s"player_pause_$guildId")
+    )
+
+    val stopButton = MessageComponent(
+      `type` = 2,
+      style = Some(4),
+      label = Some("Stop"),
+      custom_id = Some(s"player_stop_$guildId")
+    )
+
+    val skipButton = MessageComponent(
+      `type` = 2,
+      style = Some(2),
+      label = Some("Skip"),
+      custom_id = Some(s"player_skip_$guildId"),
+      disabled = Some(!hasQueue)
+    )
+
+    val actionRow = MessageComponent(
+      `type` = 1,
+      components = Some(List(pauseButton, stopButton, skipButton))
+    )
+
+    List(actionRow)
   }
 }

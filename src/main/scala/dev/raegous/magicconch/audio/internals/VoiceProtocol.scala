@@ -1,4 +1,4 @@
-package dev.raegous.magicconch
+package dev.raegous.magicconch.audio.internals
 
 import scodec.*
 import scodec.bits.*

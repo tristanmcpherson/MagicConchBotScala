@@ -1,4 +1,4 @@
-package dev.raegous.magicconch
+package dev.raegous.magicconch.discord
 
 import io.circe.{Decoder, Encoder}
 import io.circe.generic.semiauto.*
@@ -193,6 +193,9 @@ case class MessageComponent(
     id: Option[Int] = None,  // Discord-assigned ID for components in messages
     disabled: Option[Boolean] = None
 )
+
+// Type alias for Action Row components
+type MessageActionRow = MessageComponent
 
 case class Interaction(
     id: String,

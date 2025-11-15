@@ -1,4 +1,4 @@
-package dev.raegous.magicconch
+package dev.raegous.magicconch.discord
 
 import cats.effect.*
 import cats.implicits.*
@@ -285,12 +285,24 @@ class DiscordApiClient[F[_]: Async](token: String, backend: WebSocketStreamBacke
   }
 
   def editInteractionResponse(applicationId: String, interactionToken: String, content: String): F[Unit] = {
+    editRichInteractionResponse(applicationId, interactionToken, content, None, None)
+  }
+
+  def editRichInteractionResponse(
+    applicationId: String,
+    interactionToken: String,
+    content: String,
+    embeds: Option[List[MessageEmbed]] = None,
+    components: Option[List[MessageComponent]] = None
+  ): F[Unit] = {
     import io.circe.Printer
     import io.circe.Json
     val jsonPrinter = Printer.noSpaces.copy(dropNullValues = true)
 
     val payload = Json.obj(
-      "content" := content
+      "content" := content,
+      "embeds" := embeds,
+      "components" := components
     )
 
     val request = basicRequest

@@ -1,14 +1,17 @@
-package dev.raegous.magicconch
+package dev.raegous.magicconch.audio
 
 import cats.effect.*
 import cats.effect.implicits.*
+import cats.implicits.*
+import dev.raegous.magicconch.audio.internals.*
+import dev.raegous.magicconch.discord.*
+import dev.raegous.magicconch.guilds.GuildSettingsManager
+import dev.raegous.magicconch.music.*
+import io.circe.syntax.*
 import org.typelevel.log4cats.Logger
 import sttp.ws.WebSocket
-import io.circe.syntax.*
-import DiscordModels.*
-import cats.implicits.*
+
 import scala.concurrent.duration.*
-import dev.raegous.magicconch.audio.{AudioSourceManager, DirectUrlAudioSource, YouTubeAudioSource, YtDlpExtractor, AudioTrackInfo}
 
 object VoiceManager {
   def make[F[_]: Async: fs2.io.process.Processes](

@@ -4,8 +4,8 @@ import cats.data.*
 import sttp.ws.WebSocket
 import cats.effect.implicits.*
 import cats.implicits.*
-import dev.raegous.magicconch.DiscordModels.*
 import dev.raegous.magicconch.*
+import dev.raegous.magicconch.discord.*
 
 /** Context containing all data needed to execute a command */
 case class CommandContext[F[_]](

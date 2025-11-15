@@ -1,4 +1,4 @@
-package dev.raegous.magicconch
+package dev.raegous.magicconch.guilds
 
 import cats.effect.*
 import cats.implicits.*

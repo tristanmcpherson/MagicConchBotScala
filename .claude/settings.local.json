@@ -31,8 +31,21 @@
       "Bash(cmd /c \"if not exist src\\test\\scala\\dev\\raegous\\magicconch mkdir src\\test\\scala\\dev\\raegous\\magicconch\")",
       "Bash(cmd /c \"timeout /t 5 /nobreak\")",
       "Bash(cmd /c \"del src\\main\\resources\\simplelogger.properties\")",
-      "Bash(cmd /c \"timeout /t 10 /nobreak\")"
+      "Bash(cmd /c \"timeout /t 10 /nobreak\")",
+      "Bash(cmd /c \"C:\\Users\\Tristan\\AppData\\Local\\Coursier\\data\\bin\\sbt.bat\" \"testOnly dev.raegous.magicconch.commands.PlayerInteractionHandlerTest\")",
+      "Bash(findstr:*)",
+      "WebFetch(domain:code.claude.com)",
+      "Bash(env)",
+      "mcp__jetbrains-mcp__get_run_configurations",
+      "mcp__jetbrains-mcp__execute_run_configuration",
+      "mcp__jetbrains-mcp__get_file_problems",
+      "mcp__jetbrains-mcp__execute_terminal_command",
+      "mcp__jetbrains-mcp__get_file_text_by_path"
     ],
     "deny": []
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "jetbrains-mcp"
+  ]
 }

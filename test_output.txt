@@ -1,0 +1,173 @@
+C:\Users\Tristan\.jdks\temurin-20.0.1\bin\java.exe -javaagent:C:\Users\Tristan\AppData\Local\JetBrains\IntelliJIdea2025.2\captureAgent\debugger-agent.jar=file:///C:/Users/Tristan/AppData/Local/Temp/capture14210584994414980143.props -Didea.test.cyclic.buffer.size=1048576 "-javaagent:C:\Program Files\JetBrains\IntelliJ IDEA 2025.2.4\lib\idea_rt.jar=55350" -Dkotlinx.coroutines.debug.enable.creation.stack.trace=false -Ddebugger.agent.enable.coroutines=true -Dkotlinx.coroutines.debug.enable.flows.stack.trace=true -Dkotlinx.coroutines.debug.enable.mutable.state.flows.stack.trace=true -Dfile.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8 -classpath "C:\Program Files\JetBrains\IntelliJ IDEA 2025.2.4\lib\idea_rt.jar;C:\Program Files\JetBrains\IntelliJ IDEA 2025.2.4\plugins\junit\lib\junit-rt.jar;C:\Git\magic-conch-scala\target\scala-3.3.0\test-classes;C:\Git\magic-conch-scala\target\scala-3.3.0\classes;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\scala-lang\scala3-library_3\3.3.7\scala3-library_3-3.3.7.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\typelevel\cats-effect_3\3.6.3\cats-effect_3-3.6.3.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\http4s\http4s-ember-client_3\0.23.33\http4s-ember-client_3-0.23.33.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\http4s\http4s-ember-server_3\0.23.33\http4s-ember-server_3-0.23.33.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\http4s\http4s-dsl_3\0.23.33\http4s-dsl_3-0.23.33.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\http4s\http4s-circe_3\0.23.33\http4s-circe_3-0.23.33.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\com\softwaremill\sttp\client4\core_3\4.0.13\core_3-4.0.13.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\com\softwaremill\sttp\client4\fs2_3\4.0.13\fs2_3-4.0.13.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\io\circe\circe-core_3\0.14.15\circe-core_3-0.14.15.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\io\circe\circe-generic_3\0.14.15\circe-generic_3-0.14.15.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\io\circe\circe-parser_3\0.14.15\circe-parser_3-0.14.15.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\ch\qos\logback\logback-classic\1.5.15\logback-classic-1.5.15.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\typelevel\log4cats-slf4j_3\2.7.1\log4cats-slf4j_3-2.7.1.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\com\github\pureconfig\pureconfig-core_3\0.17.9\pureconfig-core_3-0.17.9.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\java-websocket\Java-WebSocket\1.6.0\Java-WebSocket-1.6.0.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\co\fs2\fs2-core_3\3.12.2\fs2-core_3-3.12.2.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\io\github\jaredmdobson\concentus\1.0.2\concentus-1.0.2.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\purejava\tweetnacl-java\1.1.2\tweetnacl-java-1.1.2.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\com\goterl\lazysodium-java\5.1.4\lazysodium-java-5.1.4.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\net\java\dev\jna\jna\5.13.0\jna-5.13.0.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\scodec\scodec-core_3\2.2.2\scodec-core_3-2.2.2.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\scodec\scodec-cats_3\1.2.0\scodec-cats_3-1.2.0.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\scalameta\munit_3\1.0.0\munit_3-1.0.0.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\typelevel\munit-cats-effect_3\2.1.0\munit-cats-effect_3-2.1.0.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\com\bdmendes\smockito_3\2.2.1\smockito_3-2.2.1.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\com\sourcegraph\semanticdb-javac\0.11.1\semanticdb-javac-0.11.1.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\scala-lang\scala-library\2.13.16\scala-library-2.13.16.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\typelevel\cats-effect-kernel_3\3.6.3\cats-effect-kernel_3-3.6.3.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\typelevel\cats-effect-std_3\3.6.3\cats-effect-std_3-3.6.3.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\typelevel\cats-mtl_3\1.3.1\cats-mtl_3-1.3.1.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\http4s\http4s-ember-core_3\0.23.33\http4s-ember-core_3-0.23.33.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\http4s\http4s-client_3\0.23.33\http4s-client_3-0.23.33.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\typelevel\keypool_3\0.4.10\keypool_3-0.4.10.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\http4s\http4s-server_3\0.23.33\http4s-server_3-0.23.33.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\http4s\http4s-core_3\0.23.33\http4s-core_3-0.23.33.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\http4s\http4s-jawn_3\0.23.33\http4s-jawn_3-0.23.33.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\io\circe\circe-jawn_3\0.14.15\circe-jawn_3-0.14.15.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\com\softwaremill\sttp\model\core_3\1.7.17\core_3-1.7.17.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\com\softwaremill\sttp\shared\core_3\1.5.0\core_3-1.5.0.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\com\softwaremill\sttp\shared\ws_3\1.5.0\ws_3-1.5.0.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\com\softwaremill\sttp\client4\cats_3\4.0.13\cats_3-4.0.13.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\com\softwaremill\sttp\shared\fs2_3\1.5.0\fs2_3-1.5.0.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\co\fs2\fs2-reactive-streams_3\3.12.2\fs2-reactive-streams_3-3.12.2.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\co\fs2\fs2-io_3\3.12.2\fs2-io_3-3.12.2.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\io\circe\circe-numbers_3\0.14.15\circe-numbers_3-0.14.15.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\typelevel\cats-core_3\2.13.0\cats-core_3-2.13.0.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\ch\qos\logback\logback-core\1.5.15\logback-core-1.5.15.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\slf4j\slf4j-api\2.0.15\slf4j-api-2.0.15.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\typelevel\log4cats-core_3\2.7.1\log4cats-core_3-2.7.1.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\com\typesafe\config\1.4.3\config-1.4.3.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\scodec\scodec-bits_3\1.1.38\scodec-bits_3-1.1.38.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\com\goterl\resource-loader\2.0.2\resource-loader-2.0.2.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\scalameta\junit-interface\1.0.0\junit-interface-1.0.0.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\scalameta\munit-diff_3\1.0.0\munit-diff_3-1.0.0.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\junit\junit\4.13.2\junit-4.13.2.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\mockito\mockito-core\5.20.0\mockito-core-5.20.0.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\com\twitter\hpack\1.0.2\hpack-1.0.2.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\typelevel\case-insensitive_3\1.4.2\case-insensitive_3-1.4.2.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\typelevel\cats-parse_3\1.0.0\cats-parse_3-1.0.0.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\http4s\http4s-crypto_3\0.2.4\http4s-crypto_3-0.2.4.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\com\comcast\ip4s-core_3\3.7.0\ip4s-core_3-3.7.0.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\typelevel\literally_3\1.1.0\literally_3-1.1.0.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\typelevel\vault_3\3.6.0\vault_3-3.6.0.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\log4s\log4s_3\1.10.0\log4s_3-1.10.0.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\typelevel\jawn-fs2_3\2.4.0\jawn-fs2_3-2.4.0.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\typelevel\jawn-parser_3\1.6.0\jawn-parser_3-1.6.0.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\reactivestreams\reactive-streams\1.0.4\reactive-streams-1.0.4.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\typelevel\cats-kernel_3\2.13.0\cats-kernel_3-2.13.0.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\scala-sbt\test-interface\1.0\test-interface-1.0.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\hamcrest\hamcrest-core\1.3\hamcrest-core-1.3.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\net\bytebuddy\byte-buddy\1.17.7\byte-buddy-1.17.7.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\net\bytebuddy\byte-buddy-agent\1.17.7\byte-buddy-agent-1.17.7.jar;C:\Users\Tristan\AppData\Local\Coursier\cache\v1\https\repo1.maven.org\maven2\org\objenesis\objenesis\3.3\objenesis-3.3.jar" com.intellij.rt.junit.JUnitStarter -ideVersion5 -junit4 @w@C:\Users\Tristan\AppData\Local\Temp\idea_working_dirs_munit.tmp @C:\Users\Tristan\AppData\Local\Temp\idea_munit.tmp
+Testing started at 11:18 PM ...
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+
+com.bdmendes.smockito.Smockito$SmockitoException$UnstubbedMethod: The method storeSearchResults of class dev.raegous.magicconch.VoiceManager is not stubbed and was called with arguments: (user123, List()). Did you forget to stub the method, or was it called unexpectedly?
+Please review the documentation at https://github.com/bdmendes/smockito. If you think this is a bug, please open an issue with a minimal reproducible example.
+
+	at com.bdmendes.smockito.Smockito$SmockitoException$UnstubbedMethod$.apply(Smockito.scala:109)
+	at com.bdmendes.smockito.DefaultAnswer.answer(DefaultAnswer.scala:16)
+	at org.mockito.internal.handler.MockHandlerImpl.handle(MockHandlerImpl.java:111)
+	at org.mockito.internal.handler.NullResultGuardian.handle(NullResultGuardian.java:29)
+	at org.mockito.internal.handler.InvocationNotifierHandler.handle(InvocationNotifierHandler.java:34)
+	at org.mockito.internal.creation.bytebuddy.access.MockMethodInterceptor.doIntercept(MockMethodInterceptor.java:84)
+	at org.mockito.internal.creation.bytebuddy.MockMethodAdvice.handle(MockMethodAdvice.java:136)
+	at dev.raegous.magicconch.VoiceManager.storeSearchResults(VoiceManager.scala:441)
+	at dev.raegous.magicconch.commands.SearchCommand.execute$$anonfun$2$$anonfun$1(SearchCommand.scala:28)
+	at flatMap @ dev.raegous.magicconch.commands.SearchCommand.execute$$anonfun$2(SearchCommand.scala:72)
+	at flatMap @ dev.raegous.magicconch.commands.SearchCommand.execute(SearchCommand.scala:72)
+	at map @ dev.raegous.magicconch.commands.SearchCommandTest.$init$$$anonfun$3(SearchCommandTest.scala:67)
+	at flatMap @ munit.internal.NestingChecks$.checkNestingIO(internal.scala:38)
+
+
+munit.FailException: C:\Git\magic-conch-scala\src\test\scala\dev\raegous\magicconch\commands\SearchCommandTest.scala:194 Should have at most 5 buttons
+193:      val buttons = result.components.get.head.components.get
+194:      assert(buttons.length <= 5, "Should have at most 5 buttons")
+195:
+
+	at munit.FunSuite.assert(FunSuite.scala:11)
+	at dev.raegous.magicconch.commands.SearchCommandTest.$init$$$anonfun$6$$anonfun$3(SearchCommandTest.scala:194)
+	at map @ dev.raegous.magicconch.commands.SearchCommand.execute$$anonfun$2$$anonfun$1(SearchCommand.scala:71)
+	at map @ dev.raegous.magicconch.commands.SearchCommand.execute$$anonfun$2$$anonfun$1(SearchCommand.scala:72)
+	at flatMap @ dev.raegous.magicconch.commands.SearchCommand.execute$$anonfun$2(SearchCommand.scala:72)
+	at flatMap @ dev.raegous.magicconch.commands.SearchCommand.execute(SearchCommand.scala:72)
+	at map @ dev.raegous.magicconch.commands.SearchCommandTest.$init$$$anonfun$6(SearchCommandTest.scala:197)
+	at flatMap @ munit.internal.NestingChecks$.checkNestingIO(internal.scala:38)
+
+
+munit.FailException: C:\Git\magic-conch-scala\src\test\scala\dev\raegous\magicconch\discord\DiscordModelsSerializationTest.scala:260 Failed to decode GuildCreate: DecodingFailure at .system_channel_flags: Missing required field
+259:      case Left(error) =>
+260:        fail(s"Failed to decode GuildCreate: $error")
+261:    }
+
+	at munit.Assertions.fail(Assertions.scala:256)
+	at munit.Assertions.fail$(Assertions.scala:16)
+	at munit.FunSuite.fail(FunSuite.scala:11)
+	at dev.raegous.magicconch.discord.DiscordModelsSerializationTest.$init$$$anonfun$9(DiscordModelsSerializationTest.scala:260)
+
+
+com.bdmendes.smockito.Smockito$SmockitoException$UnstubbedMethod: The method getVolume of class dev.raegous.magicconch.GuildSettingsManager is not stubbed and was called with arguments: (guild123). Did you forget to stub the method, or was it called unexpectedly?
+Please review the documentation at https://github.com/bdmendes/smockito. If you think this is a bug, please open an issue with a minimal reproducible example.
+
+	at com.bdmendes.smockito.Smockito$SmockitoException$UnstubbedMethod$.apply(Smockito.scala:109)
+	at com.bdmendes.smockito.DefaultAnswer.answer(DefaultAnswer.scala:16)
+	at org.mockito.internal.handler.MockHandlerImpl.handle(MockHandlerImpl.java:111)
+	at org.mockito.internal.handler.NullResultGuardian.handle(NullResultGuardian.java:29)
+	at org.mockito.internal.handler.InvocationNotifierHandler.handle(InvocationNotifierHandler.java:34)
+	at org.mockito.internal.creation.bytebuddy.access.MockMethodInterceptor.doIntercept(MockMethodInterceptor.java:84)
+	at org.mockito.internal.creation.bytebuddy.MockMethodAdvice.handle(MockMethodAdvice.java:136)
+	at dev.raegous.magicconch.GuildSettingsManager.getVolume(GuildSettingsManager.scala:50)
+	at dev.raegous.magicconch.commands.PlayerInteractionHandler.handleVolumeControl$$anonfun$2(PlayerInteractionHandler.scala:64)
+	at scala.Option.fold(Option.scala:263)
+	at dev.raegous.magicconch.commands.PlayerInteractionHandler.handleVolumeControl(PlayerInteractionHandler.scala:68)
+	at dev.raegous.magicconch.commands.PlayerInteractionHandler.handle(PlayerInteractionHandler.scala:45)
+	at dev.raegous.magicconch.commands.PlayerInteractionHandlerTest.$init$$$anonfun$5(PlayerInteractionHandlerTest.scala:131)
+
+
+
+Wanted but not invoked:
+voiceManager.pausePlayback("guild123");
+-> at dev.raegous.magicconch.VoiceManager.pausePlayback(VoiceManager.scala:484)
+
+However, there were exactly 2 interactions with this mock:
+voiceManager.isPaused("guild123");
+-> at dev.raegous.magicconch.commands.PlayerInteractionHandler.handlePlayerPauseResume$$anonfun$2(PlayerInteractionHandler.scala:126)
+
+voiceManager.isPaused("guild123");
+-> at dev.raegous.magicconch.commands.PlayerInteractionHandler.handlePlayerPauseResume$$anonfun$2$$anonfun$1$$anonfun$1(PlayerInteractionHandler.scala:132)
+
+
+Wanted but not invoked:
+voiceManager.pausePlayback("guild123");
+-> at dev.raegous.magicconch.VoiceManager.pausePlayback(VoiceManager.scala:484)
+
+However, there were exactly 2 interactions with this mock:
+voiceManager.isPaused("guild123");
+-> at dev.raegous.magicconch.commands.PlayerInteractionHandler.handlePlayerPauseResume$$anonfun$2(PlayerInteractionHandler.scala:126)
+
+voiceManager.isPaused("guild123");
+-> at dev.raegous.magicconch.commands.PlayerInteractionHandler.handlePlayerPauseResume$$anonfun$2$$anonfun$1$$anonfun$1(PlayerInteractionHandler.scala:132)
+
+
+	at dev.raegous.magicconch.VoiceManager.pausePlayback(VoiceManager.scala:484)
+	at dev.raegous.magicconch.commands.PlayerInteractionHandlerTest.$init$$$anonfun$6$$anonfun$3(PlayerInteractionHandlerTest.scala:155)
+	at map @ dev.raegous.magicconch.commands.PlayerInteractionHandler.handlePlayerPauseResume$$anonfun$2$$anonfun$1$$anonfun$1$$anonfun$1(PlayerInteractionHandler.scala:134)
+	at flatMap @ dev.raegous.magicconch.commands.PlayerInteractionHandler.handlePlayerPauseResume$$anonfun$2$$anonfun$1$$anonfun$1(PlayerInteractionHandler.scala:134)
+	at flatMap @ dev.raegous.magicconch.commands.PlayerInteractionHandler.handlePlayerPauseResume$$anonfun$2$$anonfun$1(PlayerInteractionHandler.scala:134)
+	at flatMap @ dev.raegous.magicconch.commands.PlayerInteractionHandler.handlePlayerPauseResume$$anonfun$2(PlayerInteractionHandler.scala:134)
+	at map @ dev.raegous.magicconch.commands.PlayerInteractionHandlerTest.$init$$$anonfun$6(PlayerInteractionHandlerTest.scala:156)
+	at flatMap @ munit.internal.NestingChecks$.checkNestingIO(internal.scala:38)
+
+
+
+Wanted but not invoked:
+voiceManager.resumePlayback("guild123");
+-> at dev.raegous.magicconch.VoiceManager.resumePlayback(VoiceManager.scala:514)
+
+However, there were exactly 2 interactions with this mock:
+voiceManager.isPaused("guild123");
+-> at dev.raegous.magicconch.commands.PlayerInteractionHandler.handlePlayerPauseResume$$anonfun$2(PlayerInteractionHandler.scala:126)
+
+voiceManager.isPaused("guild123");
+-> at dev.raegous.magicconch.commands.PlayerInteractionHandler.handlePlayerPauseResume$$anonfun$2$$anonfun$1$$anonfun$1(PlayerInteractionHandler.scala:132)
+
+
+Wanted but not invoked:
+voiceManager.resumePlayback("guild123");
+-> at dev.raegous.magicconch.VoiceManager.resumePlayback(VoiceManager.scala:514)
+
+However, there were exactly 2 interactions with this mock:
+voiceManager.isPaused("guild123");
+-> at dev.raegous.magicconch.commands.PlayerInteractionHandler.handlePlayerPauseResume$$anonfun$2(PlayerInteractionHandler.scala:126)
+
+voiceManager.isPaused("guild123");
+-> at dev.raegous.magicconch.commands.PlayerInteractionHandler.handlePlayerPauseResume$$anonfun$2$$anonfun$1$$anonfun$1(PlayerInteractionHandler.scala:132)
+
+
+	at dev.raegous.magicconch.VoiceManager.resumePlayback(VoiceManager.scala:514)
+	at dev.raegous.magicconch.commands.PlayerInteractionHandlerTest.$init$$$anonfun$7$$anonfun$3(PlayerInteractionHandlerTest.scala:179)
+	at map @ dev.raegous.magicconch.commands.PlayerInteractionHandler.handlePlayerPauseResume$$anonfun$2$$anonfun$1$$anonfun$1$$anonfun$1(PlayerInteractionHandler.scala:134)
+	at flatMap @ dev.raegous.magicconch.commands.PlayerInteractionHandler.handlePlayerPauseResume$$anonfun$2$$anonfun$1$$anonfun$1(PlayerInteractionHandler.scala:134)
+	at flatMap @ dev.raegous.magicconch.commands.PlayerInteractionHandler.handlePlayerPauseResume$$anonfun$2$$anonfun$1(PlayerInteractionHandler.scala:134)
+	at flatMap @ dev.raegous.magicconch.commands.PlayerInteractionHandler.handlePlayerPauseResume$$anonfun$2(PlayerInteractionHandler.scala:134)
+	at map @ dev.raegous.magicconch.commands.PlayerInteractionHandlerTest.$init$$$anonfun$7(PlayerInteractionHandlerTest.scala:180)
+	at flatMap @ munit.internal.NestingChecks$.checkNestingIO(internal.scala:38)
+
+
+
+Wanted but not invoked:
+voiceManager.skipTrack("guild123");
+-> at dev.raegous.magicconch.VoiceManager.skipTrack(VoiceManager.scala:539)
+
+However, there were exactly 2 interactions with this mock:
+voiceManager.getQueue("guild123");
+-> at dev.raegous.magicconch.commands.PlayerInteractionHandler.handlePlayerSkip$$anonfun$2(PlayerInteractionHandler.scala:199)
+
+voiceManager.getQueue("guild123");
+-> at dev.raegous.magicconch.commands.PlayerInteractionHandler.handlePlayerSkip$$anonfun$2$$anonfun$1$$anonfun$3(PlayerInteractionHandler.scala:201)
+
+
+Wanted but not invoked:
+voiceManager.skipTrack("guild123");
+-> at dev.raegous.magicconch.VoiceManager.skipTrack(VoiceManager.scala:539)
+
+However, there were exactly 2 interactions with this mock:
+voiceManager.getQueue("guild123");
+-> at dev.raegous.magicconch.commands.PlayerInteractionHandler.handlePlayerSkip$$anonfun$2(PlayerInteractionHandler.scala:199)
+
+voiceManager.getQueue("guild123");
+-> at dev.raegous.magicconch.commands.PlayerInteractionHandler.handlePlayerSkip$$anonfun$2$$anonfun$1$$anonfun$3(PlayerInteractionHandler.scala:201)
+
+
+	at dev.raegous.magicconch.VoiceManager.skipTrack(VoiceManager.scala:539)
+	at dev.raegous.magicconch.commands.PlayerInteractionHandlerTest.$init$$$anonfun$9$$anonfun$3(PlayerInteractionHandlerTest.scala:238)
+	at map @ dev.raegous.magicconch.commands.PlayerInteractionHandler.handlePlayerSkip$$anonfun$2$$anonfun$1$$anonfun$3$$anonfun$2(PlayerInteractionHandler.scala:213)
+	at map @ dev.raegous.magicconch.commands.PlayerInteractionHandler.handlePlayerSkip$$anonfun$2$$anonfun$1$$anonfun$3(PlayerInteractionHandler.scala:211)
+	at flatMap @ dev.raegous.magicconch.commands.PlayerInteractionHandler.handlePlayerSkip$$anonfun$2$$anonfun$1$$anonfun$3(PlayerInteractionHandler.scala:213)
+	at flatMap @ dev.raegous.magicconch.commands.PlayerInteractionHandler.handlePlayerSkip$$anonfun$2$$anonfun$1(PlayerInteractionHandler.scala:213)
+	at flatMap @ dev.raegous.magicconch.commands.PlayerInteractionHandler.handlePlayerSkip$$anonfun$2(PlayerInteractionHandler.scala:213)
+	at map @ dev.raegous.magicconch.commands.PlayerInteractionHandlerTest.$init$$$anonfun$9(PlayerInteractionHandlerTest.scala:239)
+	at flatMap @ munit.internal.NestingChecks$.checkNestingIO(internal.scala:38)
+
+
+Process finished with exit code -1

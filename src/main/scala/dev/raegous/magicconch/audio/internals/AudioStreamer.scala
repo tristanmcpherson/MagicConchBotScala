@@ -1,4 +1,4 @@
-package dev.raegous.magicconch
+package dev.raegous.magicconch.audio.internals
 
 import cats.effect.*
 import cats.effect.std.Queue
@@ -11,9 +11,10 @@ import sttp.ws.WebSocket
 import java.net.DatagramSocket
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
-import DiscordModels.*
 import io.github.jaredmdobson.concentus.*
 import VoiceProtocol.*
+import dev.raegous.magicconch.*
+import dev.raegous.magicconch.guilds.GuildSettingsManager
 
 import scala.concurrent.duration.*
 import java.nio.ByteOrder
