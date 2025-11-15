@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "jetbrains-mcp": {
+      "command": "C:\\Program Files\\JetBrains\\IntelliJ IDEA 2025.2.4\\jbr\\bin\\java",
+      "args": [
+        "-classpath",
+        "C:\\Users\\Tristan\\AppData\\Roaming\\JetBrains\\IntelliJIdea2025.2\\plugins\\mcpserver\\lib\\mcpserver-frontend.jar;C:\\Program Files\\JetBrains\\IntelliJ IDEA 2025.2.4\\lib\\util-8.jar;C:\\Program Files\\JetBrains\\IntelliJ IDEA 2025.2.4\\lib\\modules\\intellij.libraries.ktor.client.cio.jar;C:\\Program Files\\JetBrains\\IntelliJ IDEA 2025.2.4\\lib\\lib-client.jar;C:\\Program Files\\JetBrains\\IntelliJ IDEA 2025.2.4\\lib\\modules\\intellij.libraries.ktor.client.jar",
+        "com.intellij.mcpserver.stdio.McpStdioRunnerKt"
+      ],
+      "env": {
+        "IJ_MCP_SERVER_PORT": "64342"
+      }
+    }
+  }
+}

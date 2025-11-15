@@ -1,0 +1,223 @@
+package dev.raegous.magicconch.commands
+
+import cats.effect.*
+import cats.implicits.*
+import org.typelevel.log4cats.Logger
+import dev.raegous.magicconch.*
+import dev.raegous.magicconch.audio.VoiceManager
+import dev.raegous.magicconch.discord.*
+import dev.raegous.magicconch.discord.DiscordModels.given
+import dev.raegous.magicconch.guilds.GuildSettingsManager
+import io.circe.Printer
+import io.circe.syntax.*
+import sttp.ws.WebSocket
+
+/**
+ * Handles player control interactions (pause/resume, stop, skip, volume)
+ *
+ * This handler processes button interactions from the music player interface:
+ * - Pause/Resume: Toggle playback state
+ * - Stop: Stop playback and clear queue
+ * - Skip: Skip to next track
+ * - Volume: Adjust playback volume
+ */
+class PlayerInteractionHandler[F[_]: Async](
+  voiceManager: VoiceManager[F],
+  discordApi: DiscordApiClient[F],
+  guildSettings: GuildSettingsManager[F]
+)(using Logger[F]) extends ComponentInteractionHandler[F] {
+
+  private val jsonPrinter = Printer.noSpaces.copy(dropNullValues = true)
+
+  override def canHandle(customId: String): Boolean = {
+    customId.startsWith("volume_") ||
+    customId.startsWith("player_pause_") ||
+    customId.startsWith("player_resume_") ||
+    customId.startsWith("player_stop_") ||
+    customId.startsWith("player_skip_")
+  }
+
+  override def handle(
+    customId: String,
+    interaction: Interaction,
+    wsOpt: Option[WebSocket[F]]
+  ): F[Unit] = {
+    customId match {
+      case id if id.startsWith("volume_") => handleVolumeControl(id, interaction)
+      case id if id.startsWith("player_pause_") || id.startsWith("player_resume_") =>
+        handlePlayerPauseResume(id, interaction)
+      case id if id.startsWith("player_stop_") => handlePlayerStop(id, interaction, wsOpt)
+      case id if id.startsWith("player_skip_") => handlePlayerSkip(id, interaction)
+      case _ => Logger[F].warn(s"[PLAYER] Unknown custom_id: $customId")
+    }
+  }
+
+  // Volume Control
+  private def handleVolumeControl(customId: String, interaction: Interaction): F[Unit] = {
+    parseCustomId(customId, 3).fold(
+      Logger[F].error(s"[PLAYER] Invalid volume custom_id format: $customId")
+    ) { parts =>
+      val userId = parts(1)
+      val action = parts(2)
+      val guildId = interaction.guild_id.getOrElse("")
+
+      for {
+        currentVolume <- guildSettings.getVolume(guildId)
+        newVolume <- calculateNewVolume(action, currentVolume)
+        _ <- guildSettings.setVolume(guildId, newVolume)
+        _ <- sendVolumeUpdateResponse(interaction, newVolume)
+      } yield ()
+    }
+  }
+
+  private def calculateNewVolume(action: String, currentVolume: Double): F[Double] = {
+    action match {
+      case "inc10" => Async[F].pure(Math.min(2.0, currentVolume + 0.10))
+      case "dec10" => Async[F].pure(Math.max(0.0, currentVolume - 0.10))
+      case levelStr =>
+        levelStr.toIntOption match {
+          case Some(level) if level >= 0 && level <= 200 => Async[F].pure(level / 100.0)
+          case _ =>
+            Logger[F].warn(s"[PLAYER] Invalid volume level: $levelStr") >>
+              Async[F].pure(currentVolume)
+        }
+    }
+  }
+
+  private def sendVolumeUpdateResponse(interaction: Interaction, newVolume: Double): F[Unit] = {
+    val currentPercent = (newVolume * 100).toInt
+    val embed = MessageEmbed(
+      title = Some("Volume Control"),
+      description = Some(s"Current volume: **${currentPercent}%**\n\nUse the buttons below to adjust volume:"),
+      color = Some(0x3498db),
+      fields = Some(List(
+        EmbedField(
+          name = "Quick Presets",
+          value = "0% (Mute) - 50% - 100% (Default) - 150% - 200% (Max)",
+          inline = Some(false)
+        ),
+        EmbedField(
+          name = "Fine Control",
+          value = "-10% or +10% adjustments",
+          inline = Some(false)
+        )
+      ))
+    )
+
+    val response = InteractionResponse(
+      `type` = 7, // UPDATE_MESSAGE
+      data = Some(InteractionResponseData(
+        content = Some(s"Current volume: ${currentPercent}%"),
+        embeds = Some(List(embed)),
+        components = interaction.message.flatMap(_.components)
+      ))
+    )
+    discordApi.sendInteractionResponse(interaction.id, interaction.token, response.asJson.printWith(jsonPrinter))
+  }
+
+  // Pause/Resume
+  private def handlePlayerPauseResume(customId: String, interaction: Interaction): F[Unit] = {
+    parseCustomId(customId, 3).fold(
+      Logger[F].error(s"[PLAYER] Invalid player pause/resume custom_id format: $customId")
+    ) { parts =>
+      val action = parts(1)
+      val guildId = parts(2)
+
+      for {
+        isPaused <- voiceManager.isPaused(guildId)
+        _ <- (action, isPaused) match {
+          case ("pause", false) => voiceManager.pausePlayback(guildId)
+          case ("resume", true) => voiceManager.resumePlayback(guildId)
+          case _ => Async[F].unit
+        }
+        newPaused <- voiceManager.isPaused(guildId)
+        _ <- sendPauseResumeResponse(interaction, guildId, newPaused)
+      } yield ()
+    }
+  }
+
+  private def sendPauseResumeResponse(interaction: Interaction, guildId: String, isPaused: Boolean): F[Unit] = {
+    val response = InteractionResponse(
+      `type` = 7, // UPDATE_MESSAGE
+      data = Some(InteractionResponseData(
+        content = Some(if (isPaused) "Playback paused" else "Playback resumed"),
+        components = updatePauseResumeButtons(interaction, guildId, isPaused)
+      ))
+    )
+    discordApi.sendInteractionResponse(interaction.id, interaction.token, response.asJson.printWith(jsonPrinter))
+  }
+
+  private def updatePauseResumeButtons(interaction: Interaction, guildId: String, isPaused: Boolean): Option[List[MessageComponent]] = {
+    interaction.message.flatMap(_.components).map { components =>
+      components.map { row =>
+        row.copy(components = row.components.map(_.map { button =>
+          if (button.custom_id.exists(id => id.startsWith("player_pause_") || id.startsWith("player_resume_"))) {
+            button.copy(
+              label = Some(if (isPaused) "Resume" else "Pause"),
+              custom_id = Some(s"player_${if (isPaused) "resume" else "pause"}_$guildId"),
+              style = Some(if (isPaused) 3 else 1) // 3=Success (green), 1=Primary (blue)
+            )
+          } else button
+        }))
+      }
+    }
+  }
+
+  // Stop
+  private def handlePlayerStop(customId: String, interaction: Interaction, wsOpt: Option[WebSocket[F]]): F[Unit] = {
+    parseCustomId(customId, 3).fold(
+      Logger[F].error(s"[PLAYER] Invalid player stop custom_id format: $customId")
+    ) { parts =>
+      val guildId = parts(2)
+
+      for {
+        _ <- voiceManager.stopPlayback(guildId)
+        _ <- wsOpt.traverse(ws => voiceManager.leaveVoiceChannel(guildId, ws))
+          .flatTap {
+            case None => Logger[F].warn("[PLAYER] No gateway WebSocket available to leave voice channel")
+            case _ => Async[F].unit
+          }
+        response = InteractionResponse(
+          `type` = 7, // UPDATE_MESSAGE
+          data = Some(InteractionResponseData(
+            content = Some("Playback stopped and queue cleared"),
+            components = Some(List.empty)
+          ))
+        )
+        _ <- discordApi.sendInteractionResponse(interaction.id, interaction.token, response.asJson.printWith(jsonPrinter))
+      } yield ()
+    }
+  }
+
+  // Skip
+  private def handlePlayerSkip(customId: String, interaction: Interaction): F[Unit] = {
+    parseCustomId(customId, 3).fold(
+      Logger[F].error(s"[PLAYER] Invalid player skip custom_id format: $customId")
+    ) { parts =>
+      val guildId = parts(2)
+
+      for {
+        queue <- voiceManager.getQueue(guildId)
+        _ <- Option.when(queue.tracks.nonEmpty)(()).traverse(_ => voiceManager.skipTrack(guildId))
+        newQueue <- voiceManager.getQueue(guildId)
+        response = InteractionResponse(
+          `type` = 7, // UPDATE_MESSAGE
+          data = Some(InteractionResponseData(
+            content = Some(newQueue.currentTrack match {
+              case Some(track) => s"Skipped! Now playing: **${track.title}**"
+              case None => "Skipped! Queue is now empty"
+            }),
+            components = if (newQueue.currentTrack.isDefined) interaction.message.flatMap(_.components) else Some(List.empty)
+          ))
+        )
+        _ <- discordApi.sendInteractionResponse(interaction.id, interaction.token, response.asJson.printWith(jsonPrinter))
+      } yield ()
+    }
+  }
+
+  // Utilities
+  private def parseCustomId(customId: String, expectedParts: Int): Option[Array[String]] = {
+    val parts = customId.split("_")
+    Option.when(parts.length >= expectedParts)(parts)
+  }
+}
