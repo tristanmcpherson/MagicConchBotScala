@@ -1,20 +1,19 @@
-package dev.raegous.magicconch
+package dev.raegous.magicconch.discord
 
 import cats.effect.*
 import cats.implicits.*
-import cats.data.{EitherT, OptionT}
 import dev.raegous.magicconch.audio.VoiceManager
-import dev.raegous.magicconch.discord.*
+import dev.raegous.magicconch.discord.DiscordModels.given
+import dev.raegous.magicconch.errors.*
+import dev.raegous.magicconch.guilds.{GuildSettingsManager, GuildTracker}
+import dev.raegous.magicconch.music.{TrackExtractor, YouTubeSearchResult}
+import dev.raegous.magicconch.{MessageHandler, commands}
+import io.circe.Printer
+import io.circe.syntax.*
 import org.typelevel.log4cats.Logger
 import sttp.ws.WebSocket
-import io.circe.parser.*
-import io.circe.syntax.*
-import io.circe.Printer
-import io.circe.DecodingFailure
-import dev.raegous.magicconch.discord.DiscordModels.*
-import dev.raegous.magicconch.discord.DiscordModels.given
-import dev.raegous.magicconch.guilds.{GuildSettingsManager, GuildTracker}
-import dev.raegous.magicconch.music.YouTubeSearchResult
+
+import scala.concurrent.duration.*
 
 object GatewayEventHandler {
   def make[F[_]: Async](
@@ -22,6 +21,7 @@ object GatewayEventHandler {
     applicationId: String,
     messageHandler: MessageHandler[F],
     voiceManager: VoiceManager[F],
+    trackExtractor: TrackExtractor[F],
     slashCommandManager: SlashCommandManager[F],
     discordApi: DiscordApiClient[F],
     guildTracker: GuildTracker[F],
@@ -37,6 +37,7 @@ object GatewayEventHandler {
         applicationId,
         messageHandler,
         voiceManager,
+        trackExtractor,
         slashCommandManager,
         discordApi,
         guildTracker,
@@ -54,6 +55,7 @@ class GatewayEventHandler[F[_]: Async] private (
   applicationId: String,
   messageHandler: MessageHandler[F],
   voiceManager: VoiceManager[F],
+  trackExtractor: TrackExtractor[F],
   slashCommandManager: SlashCommandManager[F],
   discordApi: DiscordApiClient[F],
   guildTracker: GuildTracker[F],
@@ -79,7 +81,7 @@ class GatewayEventHandler[F[_]: Async] private (
         Async[F].pure(PayloadResult())
       case 1 => // Heartbeat Request (Discord asking us to heartbeat immediately)
         Logger[F].info("Discord requested immediate heartbeat") >>
-        sendHeartbeat(ws).as(PayloadResult())
+        sendHeartbeatWithRetry(ws).as(PayloadResult())
       case 0 => // Dispatch
         handleDispatchEvent(payload, ws)
       case 9 => // Invalid Session
@@ -99,11 +101,33 @@ class GatewayEventHandler[F[_]: Async] private (
       val heartbeat = GatewayPayload(op = 1, d = seq.map(io.circe.Json.fromInt), s = None, t = None)
       val heartbeatJson = heartbeat.asJson.printWith(jsonPrinter)
       Logger[F].debug(s"Sending heartbeat with seq: $seq") >>
-      ws.sendText(heartbeatJson).handleErrorWith { error =>
-        Logger[F].error(s"Failed to send heartbeat: $error") >>
-        Async[F].unit
-      }
+      ws.sendText(heartbeatJson)
     }
+  }
+
+  private def isWebSocketClosed(error: Throwable): Boolean = {
+    val errorMsg = Option(error.getMessage).getOrElse("")
+    errorMsg.contains("closed") || errorMsg.contains("Closed")
+  }
+
+  private def handleHeartbeatError(error: Throwable): F[Unit] = {
+    val logAction = Option.when(isWebSocketClosed(error))(
+      Logger[F].warn(s"Heartbeat failed - WebSocket closed")
+    ).getOrElse(
+      Logger[F].error(s"Heartbeat failed after retries")
+    )
+    logAction >> Async[F].raiseError(error)
+  }
+
+  // Used for immediate heartbeat requests from Discord (opcode 1)
+  private def sendHeartbeatWithRetry(ws: WebSocket[F]): F[Unit] = {
+    fs2.Stream.retry(
+      fo = sendHeartbeat(ws),
+      delay = 100.millis,
+      nextDelay = _ * 2,
+      maxAttempts = 3,
+      retriable = error => !isWebSocketClosed(error)
+    ).compile.drain.handleErrorWith(handleHeartbeatError)
   }
 
   // Public method for automatic heartbeats from DiscordClient
@@ -317,7 +341,7 @@ class GatewayEventHandler[F[_]: Async] private (
     for {
       _ <- Logger[F].info(s"[SEARCH] User selected: ${selected.title}")
       _ <- sendDeferredResponse(interaction)
-      trackOpt <- voiceManager.extractAudioFromYoutube(selected.url)
+      trackOpt <- trackExtractor.extractTrackInfo(selected.url)
       _ <- trackOpt.traverse { track =>
         addTrackAndAutoPlay(track.copy(requestedBy = username), guildId, userId, wsOpt)
       }.flatMap {
@@ -338,10 +362,13 @@ class GatewayEventHandler[F[_]: Async] private (
   ): F[Unit] = {
     for {
       queueBefore <- voiceManager.getQueue(guildId)
-      _ <- voiceManager.addToQueue(guildId, track)
-      _ <- Option.when(queueBefore.tracks.isEmpty && queueBefore.currentTrack.isEmpty)(())
-        .traverse(_ => autoJoinAndPlay(guildId, userId, wsOpt))
-        .void
+      addResult <- voiceManager.addToQueue(guildId, track)
+      _ <- addResult.fold(
+        error => Logger[F].warn(s"Failed to add track: ${error.message}"),
+        _ => Option.when(queueBefore.tracks.isEmpty && queueBefore.currentTrack.isEmpty)(())
+          .traverse(_ => autoJoinAndPlay(guildId, userId, wsOpt))
+          .void
+      )
     } yield ()
   }
 
@@ -398,8 +425,8 @@ class GatewayEventHandler[F[_]: Async] private (
   private def sendVolumeUpdateResponse(interaction: Interaction, newVolume: Double): F[Unit] = {
     val currentPercent = (newVolume * 100).toInt
     val embed = MessageEmbed(
-      title = Some("Volume Control"),
-      description = Some(s"Current volume: **${currentPercent}%**\n\nUse the buttons below to adjust volume:"),
+      title = Some("Player Controls"),
+      description = Some(s"Current volume: **${currentPercent}%**\n\nUse the buttons below to control playback:"),
       color = Some(0x3498db),
       fields = Some(List(
         EmbedField(

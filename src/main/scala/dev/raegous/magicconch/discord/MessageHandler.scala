@@ -1,6 +1,9 @@
 package dev.raegous.magicconch
 
+import cats.Applicative
 import cats.effect.*
+import cats.syntax.applicative.*
+import cats.syntax.applicative._
 import cats.implicits.*
 import cats.data.OptionT
 import org.typelevel.log4cats.Logger
@@ -22,11 +25,7 @@ class MessageHandler[F[_]: Async](
       )
     ))
 
-    if (isVoiceMessage || hasAudioAttachment) {
-      handleAudioMessage(message)
-    } else {
-      handleTextMessage(message, ws)
-    }
+    Applicative[F].whenA(!isVoiceMessage && !hasAudioAttachment)(handleTextMessage(message, ws))
   }
 
   private def handleTextMessage(message: DiscordMessage, ws: WebSocket[F]): F[Unit] = {

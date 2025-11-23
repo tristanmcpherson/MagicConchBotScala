@@ -3,8 +3,8 @@
   <!-- Console appender with abbreviated package names -->
   <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
     <encoder>
-      <!-- %logger{36} shows logger name, max 36 chars, with right-side truncation -->
-      <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %class{0} - %msg%n</pattern>
+      <!-- %logger{0} shows just the class name without package -->
+      <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{0} - %msg%n</pattern>
     </encoder>
   </appender>
 

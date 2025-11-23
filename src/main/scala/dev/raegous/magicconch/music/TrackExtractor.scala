@@ -1,7 +1,10 @@
 package dev.raegous.magicconch.music
 
+import cats.data.OptionT
 import cats.effect.*
 import cats.implicits.*
+import cats.syntax.all.*
+import cats.effect.implicits.*
 import org.typelevel.log4cats.Logger
 import fs2.io.process.Processes
 import dev.raegous.magicconch.audio.*
@@ -23,14 +26,14 @@ class TrackExtractor[F[_]: Async: Processes](
    * Extract track information from a URL
    */
   def extractTrackInfo(url: String): F[Option[MusicTrack]] = {
-    audioSourceManager.extractTrackInfo(url).map(_.map(info =>
+    OptionT(audioSourceManager.extractTrackInfo(url)).map(info =>
       MusicTrack(
         url = info.url,
         title = info.title,
         duration = info.duration,
         requestedBy = "Unknown"
       )
-    ))
+    ).value
   }
 
   /**

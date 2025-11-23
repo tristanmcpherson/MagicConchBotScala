@@ -87,8 +87,8 @@ class PlayerInteractionHandler[F[_]: Async](
   private def sendVolumeUpdateResponse(interaction: Interaction, newVolume: Double): F[Unit] = {
     val currentPercent = (newVolume * 100).toInt
     val embed = MessageEmbed(
-      title = Some("Volume Control"),
-      description = Some(s"Current volume: **${currentPercent}%**\n\nUse the buttons below to adjust volume:"),
+      title = Some("Player Controls"),
+      description = Some(s"Current volume: **${currentPercent}%**\n\nUse the buttons below to control playback:"),
       color = Some(0x3498db),
       fields = Some(List(
         EmbedField(

@@ -38,7 +38,7 @@ object DiscordClient {
   )(using Logger[F]): Resource[F, DiscordClient[F]] = {
     Resource.eval {
       for {
-        heartbeatRunning <- Ref.of[F, Boolean](false)
+        heartbeatFiber <- Ref.of[F, Option[Fiber[F, Throwable, Unit]]](None)
         lastHeartbeatAck <- Ref.of[F, Option[Long]](Some(System.currentTimeMillis()))
         lastSeqRef <- Ref.of[F, Option[Int]](None)
         guildSettings <- GuildSettingsManager.make[F].allocated.map(_._1)
@@ -46,10 +46,11 @@ object DiscordClient {
         guildTracker <- GuildTracker.make[F].allocated.map(_._1)
         discordApi = new DiscordApiClient[F](token, backend)
         youtubeSearch = new YouTubeSearchClient[F](youtubeApiKey, httpClient)
-        commandRegistry = new commands.CommandRegistry[F](voiceManager, youtubeSearch, guildSettings, discordApi, applicationId)
+        trackExtractor = dev.raegous.magicconch.music.TrackExtractor.make[F]
+        commandRegistry = new commands.CommandRegistry[F](voiceManager, trackExtractor, youtubeSearch, guildSettings, discordApi, applicationId)
         messageHandler = new MessageHandler[F](discordApi, commandRegistry)
         slashCommandManager = new SlashCommandManager[F](token, applicationId, discordApi, commandRegistry)
-        eventHandler <- GatewayEventHandler.make[F](token, applicationId, messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry).allocated.map(_._1)
+        eventHandler <- GatewayEventHandler.make[F](token, applicationId, messageHandler, voiceManager, trackExtractor, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry).allocated.map(_._1)
       } yield new DiscordClient[F](
         token,
         applicationId,
@@ -64,7 +65,7 @@ object DiscordClient {
         messageHandler,
         slashCommandManager,
         eventHandler,
-        heartbeatRunning,
+        heartbeatFiber,
         lastHeartbeatAck,
         lastSeqRef
       )
@@ -72,7 +73,7 @@ object DiscordClient {
   }
 }
 
-class DiscordClient[F[_]: Async: Processes] private (
+class DiscordClient[F[_]: Async: Processes: Temporal] private (
   token: String,
   applicationId: String,
   youtubeApiKey: String,
@@ -86,7 +87,7 @@ class DiscordClient[F[_]: Async: Processes] private (
   private val messageHandler: MessageHandler[F],
   private val slashCommandManager: SlashCommandManager[F],
   private val eventHandler: GatewayEventHandler[F],
-  private val heartbeatRunning: Ref[F, Boolean],  // Track if heartbeat loop is running
+  private val heartbeatFiber: Ref[F, Option[Fiber[F, Throwable, Unit]]],  // Track heartbeat fiber for cancellation
   private val lastHeartbeatAck: Ref[F, Option[Long]],  // Timestamp of last heartbeat ACK (zombied connection detection)
   private val lastSeqRef: Ref[F, Option[Int]]  // Last sequence number received
 )(using Logger[F]) {
@@ -141,12 +142,12 @@ class DiscordClient[F[_]: Async: Processes] private (
 
                 case 9 => // Invalid Session
                   Logger[F].error("[GATEWAY] Invalid session (opcode 9) - will reconnect and re-identify") >>
-                  heartbeatRunning.set(false) >>
+                  stopHeartbeat >>
                   Async[F].raiseError(new Exception("Invalid session (opcode 9)"))
 
                 case 7 => // Reconnect
                   Logger[F].warn("[GATEWAY] Discord requested reconnect (opcode 7)") >>
-                  heartbeatRunning.set(false) >>
+                  stopHeartbeat >>
                   Async[F].raiseError(new Exception("Discord requested reconnect (opcode 7)"))
 
                 case _ =>
@@ -166,7 +167,7 @@ class DiscordClient[F[_]: Async: Processes] private (
     ).foreverM
   }
   
-  
+
   private def sendHeartbeat(ws: WebSocket[F]): F[Unit] = {
     for {
       seq <- lastSeqRef.get
@@ -175,48 +176,54 @@ class DiscordClient[F[_]: Async: Processes] private (
         "d" -> seq.map(_.asJson).getOrElse(io.circe.Json.Null)
       ).asJson
       _ <- Logger[F].debug(s"[GATEWAY] Sending heartbeat with seq: $seq")
-      _ <- Logger[F].debug(s"[GATEWAY] Heartbeat JSON: ${heartbeat.noSpaces}")
       _ <- ws.sendText(heartbeat.noSpaces)
     } yield ()
   }
 
-  private def startHeartbeat(ws: WebSocket[F], interval: Int): F[Unit] = {
-    // Check if heartbeat is already running
-    heartbeatRunning.get.flatMap { isRunning =>
-      if (isRunning) {
-        Logger[F].debug("[GATEWAY] Heartbeat already running, skipping")
-      } else {
-        Logger[F].info(s"[GATEWAY] Starting heartbeat loop (interval: ${interval}ms)") >>
-        heartbeatRunning.set(true) >>
-        Async[F].start {
-          fs2.Stream.fixedRateStartImmediately[F](interval.millis)
-            .evalMap { _ =>
-              heartbeatRunning.get.flatMap { stillRunning =>
-                if (stillRunning) {
-                  sendHeartbeat(ws).handleErrorWith { error =>
-                    val errorMsg = Option(error.getMessage).getOrElse("unknown error")
-                    if (errorMsg.contains("closed") || errorMsg.contains("Closed")) {
-                      Logger[F].warn(s"[GATEWAY] Heartbeat stopped - WebSocket closed") >>
-                      heartbeatRunning.set(false) >>
-                      Async[F].raiseError(error)
-                    } else {
-                      Logger[F].warn(s"[GATEWAY] Failed to send heartbeat: $errorMsg")
-                    }
-                  }
-                } else {
-                  Logger[F].debug("[GATEWAY] Heartbeat loop exiting - marked as stopped") >>
-                  Async[F].raiseError(new Exception("Heartbeat stopped"))
-                }
-              }
-            }
-            .compile
-            .drain
-            .handleErrorWith { error =>
-              Logger[F].debug(s"[GATEWAY] Heartbeat loop stopped")
-            }
-            .guarantee(heartbeatRunning.set(false))
-        }.void
+  private def isWebSocketClosed(error: Throwable): Boolean = {
+    val errorMsg = Option(error.getMessage).getOrElse("")
+    errorMsg.contains("closed") || errorMsg.contains("Closed")
+  }
+
+  private def handleHeartbeatError(error: Throwable): F[Unit] = {
+    val logAction = Option.when(isWebSocketClosed(error))(
+      Logger[F].warn(s"[GATEWAY] Heartbeat stopped - WebSocket closed")
+    ).getOrElse(
+      Logger[F].error(s"[GATEWAY] Heartbeat failed after retries")
+    )
+    logAction >> Async[F].raiseError(error)
+  }
+
+  private def heartbeatStream(ws: WebSocket[F], interval: Int): fs2.Stream[F, Unit] = {
+    fs2.Stream.fixedRateStartImmediately[F](interval.millis)
+      .evalMap { _ =>
+        fs2.Stream.retry(
+          fo = sendHeartbeat(ws),
+          delay = 100.millis,
+          nextDelay = _ * 2,
+          maxAttempts = 3,
+          retriable = error => !isWebSocketClosed(error)
+        ).compile.drain.handleErrorWith(handleHeartbeatError)
       }
-    }
+  }
+
+  private def startHeartbeat(ws: WebSocket[F], interval: Int): F[Unit] = {
+    heartbeatFiber.get.flatMap(_.fold(
+      ifEmpty =
+        Logger[F].info(s"[GATEWAY] Starting heartbeat loop (interval: ${interval}ms)") >>
+        Async[F].start(heartbeatStream(ws, interval).compile.drain.handleErrorWith { _ =>
+          Logger[F].debug("[GATEWAY] Heartbeat loop stopped")
+        }).flatMap(fiber => heartbeatFiber.set(Some(fiber)))
+    )(
+      _ => Logger[F].debug("[GATEWAY] Heartbeat already running, skipping")
+    ))
+  }
+
+  private def stopHeartbeat: F[Unit] = {
+    heartbeatFiber.getAndSet(None).flatMap(
+      _.fold(Async[F].unit)(fiber =>
+        Logger[F].info("[GATEWAY] Stopping heartbeat") >> fiber.cancel
+      )
+    )
   }
 }

@@ -2,9 +2,10 @@ package dev.raegous.magicconch.audio
 
 import cats.effect.*
 import cats.effect.implicits.*
-import cats.implicits.*
+import cats.syntax.all.*
 import dev.raegous.magicconch.audio.internals.*
 import dev.raegous.magicconch.discord.*
+import dev.raegous.magicconch.errors.*
 import dev.raegous.magicconch.guilds.GuildSettingsManager
 import dev.raegous.magicconch.music.*
 import io.circe.syntax.*
@@ -36,7 +37,7 @@ object VoiceManager {
           activeVoiceConnections <- Ref.of[F, Map[String, sttp.ws.WebSocket[F]]](Map.empty)
           gatewayWebSocketRef <- Ref.of[F, Option[sttp.ws.WebSocket[F]]](None)
           pendingVoiceConnections <- Ref.of[F, Map[String, (Option[String], Option[String], Option[String])]](Map.empty)
-          pendingConnectionPromises <- Ref.of[F, Map[String, Deferred[F, Unit]]](Map.empty)
+          pendingConnectionPromises <- Ref.of[F, Map[String, Deferred[F, Either[VoiceError, Unit]]]](Map.empty)
           activePlaybackFibers <- Ref.of[F, Map[String, Fiber[F, Throwable, Unit]]](Map.empty)
         } yield new VoiceManager[F](
           voiceStateRef,
@@ -67,12 +68,15 @@ class VoiceManager[F[_]: Async: fs2.io.process.Processes] private (
   private val activeVoiceConnections: Ref[F, Map[String, sttp.ws.WebSocket[F]]],
   private val gatewayWebSocketRef: Ref[F, Option[sttp.ws.WebSocket[F]]],
   private val pendingVoiceConnections: Ref[F, Map[String, (Option[String], Option[String], Option[String])]],
-  private val pendingConnectionPromises: Ref[F, Map[String, Deferred[F, Unit]]],
+  private val pendingConnectionPromises: Ref[F, Map[String, Deferred[F, Either[VoiceError, Unit]]]],
   private val activePlaybackFibers: Ref[F, Map[String, Fiber[F, Throwable, Unit]]],
   backend: sttp.client4.WebSocketStreamBackend[F, ?],
-  audioStreamer: AudioStreamer[F],  // Injected via Resource for proper lifecycle
+  audioStreamer: AudioStreamer[F],
   voiceGateway: VoiceGateway[F]
 )(using logger: Logger[F]) {
+
+  // Maximum queue size per guild to prevent memory exhaustion
+  private val MAX_QUEUE_SIZE = 500
 
   // Create audio source manager with multiple sources
   // Sources are tried in order, so direct URLs are checked first (fastest)
@@ -91,16 +95,24 @@ class VoiceManager[F[_]: Async: fs2.io.process.Processes] private (
       Logger[F].debug(s"[VOICE] State update: user=${voiceState.user_id}, channel=${voiceState.channel_id}") >>
       userVoiceStatesRef.update(states => states + (voiceState.user_id -> voiceState.channel_id)) >>
       botUserIdRef.get.flatMap { botUserId =>
-        if (voiceState.user_id == botUserId) {
-          Logger[F].debug(s"[VOICE] Bot state updated: session=${voiceState.session_id}, channel=${voiceState.channel_id}") >>
-          pendingVoiceConnections.update { pending =>
-            val (_, token, endpoint) = pending.getOrElse(guildId, (None, None, None))
-            pending + (guildId -> (Some(voiceState.session_id), token, endpoint))
-          } >>
-          attemptVoiceConnection(guildId)
-        } else {
+        Option.when(voiceState.user_id == botUserId)(
+          voiceState.channel_id.fold(
+            // Bot left voice channel - clean up pending connections
+            ifEmpty = Logger[F].debug(s"[VOICE] Bot left voice channel, cleaning up pending connections") >>
+              pendingVoiceConnections.update(_ - guildId) >>
+              pendingConnectionPromises.update(_ - guildId)
+          )(
+            // Bot joined/moved to voice channel - attempt connection
+            _ => Logger[F].debug(s"[VOICE] Bot state updated: session=${voiceState.session_id}, channel=${voiceState.channel_id}") >>
+              pendingVoiceConnections.update { pending =>
+                val (_, token, endpoint) = pending.getOrElse(guildId, (None, None, None))
+                pending + (guildId -> (Some(voiceState.session_id), token, endpoint))
+              } >>
+              attemptVoiceConnection(guildId)
+          )
+        ).getOrElse(
           Logger[F].debug(s"[VOICE] User ${voiceState.user_id} -> channel=${voiceState.channel_id}")
-        }
+        )
       }
     }
   }
@@ -136,7 +148,7 @@ class VoiceManager[F[_]: Async: fs2.io.process.Processes] private (
                     Logger[F].debug(s"[VOICE] No waiters for guild $guildId connection")
                   ) { deferred =>
                     Logger[F].info(s"[VOICE] Completing connection promise for guild $guildId (signaling waiters)") >>
-                    deferred.complete(()).void
+                    deferred.complete(Right(())).void
                   }
                 } >>
                 pendingVoiceConnections.update(_ - guildId) >>
@@ -147,7 +159,10 @@ class VoiceManager[F[_]: Async: fs2.io.process.Processes] private (
                 Logger[F].error(s"[VOICE] Stack trace: ${error.getStackTrace.take(5).mkString("\n")}") >>
                 pendingVoiceConnections.update(_ - guildId) >>
                 pendingConnectionPromises.get.flatMap { promises =>
-                  promises.get(guildId).traverse_(_.complete(()).void)
+                  promises.get(guildId).traverse_ { deferred =>
+                    val voiceError = VoiceConnectionFailed(guildId, error.getMessage)
+                    deferred.complete(Left(voiceError)).void
+                  }
                 }
               }
           }
@@ -177,14 +192,14 @@ class VoiceManager[F[_]: Async: fs2.io.process.Processes] private (
   def waitForVoiceConnection(guildId: String): F[Unit] = {
     for {
       // Create a deferred that will be completed when the connection is ready
-      deferred <- Deferred[F, Unit]
+      deferred <- Deferred[F, Either[VoiceError, Unit]]
       _ <- Logger[F].debug(s"[VOICE] Waiting for voice connection (async)...")
 
       // Store the deferred so attemptVoiceConnection can complete it
       _ <- pendingConnectionPromises.update(_ + (guildId -> deferred))
 
       // Wait for the deferred to be completed (or timeout after 15 seconds)
-      _ <- deferred.get.timeoutTo(
+      result <- deferred.get.timeoutTo(
         15.seconds,
         for {
           _ <- Logger[F].error(s"[VOICE] ✗ Timeout waiting for voice connection after 15 seconds")
@@ -193,12 +208,20 @@ class VoiceManager[F[_]: Async: fs2.io.process.Processes] private (
           _ <- Logger[F].error(s"[VOICE] Looking for guild: $guildId")
           _ <- Logger[F].error(s"[VOICE] This usually means the voice gateway connection failed or is taking too long")
           _ <- pendingConnectionPromises.update(_ - guildId)
-        } yield ()
+        } yield Left(VoiceConnectionTimeout(guildId))
       )
 
       // Clean up the promise after completion
       _ <- pendingConnectionPromises.update(_ - guildId)
-      _ <- Logger[F].debug(s"[VOICE] Connection ready")
+
+      // Handle the result - raise error if connection failed
+      _ <- result.fold(
+        error => {
+          Logger[F].error(s"[VOICE] Connection failed: ${error.message}") >>
+          Async[F].raiseError(error)
+        },
+        _ => Logger[F].debug(s"[VOICE] Connection ready")
+      )
     } yield ()
   }
   
@@ -215,25 +238,35 @@ class VoiceManager[F[_]: Async: fs2.io.process.Processes] private (
     
     ws.sendText(voiceStateUpdate.noSpaces) >>
     Logger[F].info(s"[VOICE] Left voice channel") >>
-    voiceStateRef.set(None)
+    voiceStateRef.set(None) >>
+    pendingVoiceConnections.update(_ - guildId) >>
+    pendingConnectionPromises.update(_ - guildId)
   }
   
   def getCurrentVoiceState: F[Option[BotVoiceState]] = voiceStateRef.get
   
   def setBotUserId(userId: String): F[Unit] = botUserIdRef.set(userId)
   
-  def addToQueue(guildId: String, track: MusicTrack): F[Unit] = {
-    musicQueueRef.update { queues =>
+  def addToQueue(guildId: String, track: MusicTrack): F[Either[QueueError, Unit]] = {
+    musicQueueRef.modify { queues =>
       val currentQueue = queues.getOrElse(guildId, MusicQueue(List.empty, None, false))
-      val updatedQueue = currentQueue.copy(tracks = currentQueue.tracks :+ track)
-      queues + (guildId -> updatedQueue)
-    } >> Logger[F].info(s"[QUEUE] Added: ${track.title}")
+      currentQueue.tracks.length >= MAX_QUEUE_SIZE match {
+        case true =>
+          (queues, Left(QueueFull(MAX_QUEUE_SIZE)))
+        case false =>
+          val updatedQueue = currentQueue.copy(tracks = currentQueue.tracks :+ track)
+          (queues + (guildId -> updatedQueue), Right(()))
+      }
+    }.flatTap {
+      case Right(_) => Logger[F].info(s"[QUEUE] Added: ${track.title}")
+      case Left(QueueFull(max)) => Logger[F].warn(s"[QUEUE] Failed to add track: queue is full ($max tracks)")
+    }
   }
   
   def playNext(guildId: String): F[Option[MusicTrack]] = {
     musicQueueRef.modify { queues =>
       val currentQueue = queues.getOrElse(guildId, MusicQueue(List.empty, None, false))
-      currentQueue.tracks.headOption.fold {
+      currentQueue.tracks.headOption.fold[(Map[String, MusicQueue], Option[MusicTrack])] {
         val updatedQueue = currentQueue.copy(currentTrack = None, isPlaying = false)
         val updatedQueues = queues + (guildId -> updatedQueue)
         (updatedQueues, None)
@@ -296,32 +329,8 @@ class VoiceManager[F[_]: Async: fs2.io.process.Processes] private (
     musicQueueRef.get.map(_.getOrElse(guildId, MusicQueue(List.empty, None, false)))
   }
 
-  def extractAudioFromYoutube(url: String): F[Option[MusicTrack]] = {
-    audioSourceManager.extractTrackInfo(url).map(_.map(info =>
-      MusicTrack(
-        url = info.url,
-        title = info.title,
-        duration = info.duration,
-        requestedBy = "Unknown"
-      )
-    ))
-  }
-
-  def getStreamUrl(url: String): F[Option[String]] = {
+  private def getStreamUrl(url: String): F[Option[String]] = {
     audioSourceManager.getStreamUrl(url)
-  }
-  
-  def addPlaylist(guildId: String, playlistUrl: String, requestedBy: String): F[Int] = {
-    ytDlpExtractor.extractPlaylistUrls(playlistUrl).flatMap { urls =>
-      urls.traverse { url =>
-        ytDlpExtractor.extractTrackInfo(url).flatMap(
-          _.fold(Async[F].pure(0)) { track =>
-            val trackWithUser = track.copy(requestedBy = requestedBy)
-            addToQueue(guildId, trackWithUser).as(1)
-          }
-        )
-      }.map(_.sum)
-    }
   }
   
   def connectToVoiceChannel(
@@ -391,15 +400,27 @@ class VoiceManager[F[_]: Async: fs2.io.process.Processes] private (
         clearCurrentTrack(guildId)
       } >>
       Logger[F].info(s"[PLAYBACK] Finished playing") >>
-      gatewayWebSocketRef.get.flatMap(
-        _.fold(
-          Logger[F].warn(s"[PLAYBACK] No gateway WebSocket available to send leave command")
-        ) { gatewayWs =>
-          leaveVoiceChannel(guildId, gatewayWs) >>
-          activeVoiceConnections.update(_ - guildId)
+      activePlaybackFibers.update(_ - guildId) >>
+      // Check if there's more in queue
+      getQueue(guildId).flatMap { queue =>
+        queue.tracks.headOption.fold(
+          // Queue is empty - leave voice channel and clear queue
+          Logger[F].info(s"[PLAYBACK] Queue empty, leaving voice channel") >>
+          gatewayWebSocketRef.get.flatMap(
+            _.fold(
+              Logger[F].warn(s"[PLAYBACK] No gateway WebSocket available to send leave command")
+            ) { gatewayWs =>
+              leaveVoiceChannel(guildId, gatewayWs) >>
+              activeVoiceConnections.update(_ - guildId)
+            }
+          ) >>
+          clearQueue(guildId)
+        ) { _ =>
+          // More tracks in queue - play next
+          Logger[F].info(s"[PLAYBACK] Queue has more tracks, playing next") >>
+          playNextTrack(guildId)
         }
-      ) >>
-      activePlaybackFibers.update(_ - guildId)
+      }
     }
 
     playbackAction.start.flatMap { fiber =>

@@ -5,21 +5,18 @@ import cats.effect.unsafe.implicits.global
 import com.bdmendes.smockito.*
 import com.bdmendes.smockito.given
 import dev.raegous.magicconch.*
+import dev.raegous.magicconch.MockFixtures.*
 import dev.raegous.magicconch.TestFixtures.{testLogger, *}
-import dev.raegous.magicconch.audio.VoiceManager
 import dev.raegous.magicconch.discord.{MusicQueue, MusicTrack}
 import dev.raegous.magicconch.music.*
 import munit.CatsEffectSuite
 import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito.verify
-import org.http4s.client.Client
-import sttp.ws.WebSocket
 
 class SearchCommandTest extends CatsEffectSuite, Smockito {
   test("SearchCommand should have correct metadata") {
-    val voiceManager = mock[VoiceManager[IO]]
-    val youTube = mock[YouTubeSearchClient[IO]]
-    val command = new SearchCommand[IO](voiceManager, youTube)
+    val mocks = CommandMocks[IO]()
+    val command = mocks.createSearchCommand()
 
     assertEquals(command.name, "search")
     assertEquals(command.description, "Search YouTube for videos")
@@ -28,9 +25,8 @@ class SearchCommandTest extends CatsEffectSuite, Smockito {
   }
 
   test("execute should return error when query is missing") {
-    val voiceManager = mock[VoiceManager[IO]]
-    val youTube = mock[YouTubeSearchClient[IO]]
-    val command = new SearchCommand[IO](voiceManager, youTube)
+    val mocks = CommandMocks[IO]()
+    val command = mocks.createSearchCommand()
 
     val context = CommandContext[IO](
       userId = "user123",
@@ -48,13 +44,15 @@ class SearchCommandTest extends CatsEffectSuite, Smockito {
   }
 
   test("execute should return error when no results found") {
-    val voiceManager = mock[VoiceManager[IO]]
+    val mocks = CommandMocks[IO]()
+
+    mocks.voiceManager
       .on(it.storeSearchResults)((_, _) => IO.unit)
 
-    val youTube = mock[YouTubeSearchClient[IO]]
+    mocks.youtubeSearch
       .on(it.search)((_, _) => IO.pure(List.empty))
 
-    val command = new SearchCommand[IO](voiceManager, youTube)
+    val command = mocks.createSearchCommand()
 
     val context = CommandContext[IO](
       userId = "user123",
@@ -72,8 +70,7 @@ class SearchCommandTest extends CatsEffectSuite, Smockito {
   }
 
   test("execute should return search results with buttons") {
-    val voiceManager = mock[VoiceManager[IO]]
-    val youTube = mock[YouTubeSearchClient[IO]]
+    val mocks = CommandMocks[IO]()
 
     val searchResults = List(
       sampleYouTubeSearchResult(videoId = "video1", title = "Test Video 1"),
@@ -81,13 +78,13 @@ class SearchCommandTest extends CatsEffectSuite, Smockito {
       sampleYouTubeSearchResult(videoId = "video3", title = "Test Video 3")
     )
 
-    youTube
+    mocks.youtubeSearch
       .on(it.search)((_, _) => IO.pure(searchResults))
 
-    voiceManager
+    mocks.voiceManager
       .on(it.storeSearchResults)((_, _) => IO.unit)
 
-    val command = new SearchCommand[IO](voiceManager, youTube)
+    val command = mocks.createSearchCommand()
 
     val context = CommandContext[IO](
       userId = "user123",
@@ -120,26 +117,25 @@ class SearchCommandTest extends CatsEffectSuite, Smockito {
       assert(actionRow.components.exists(_.length == 3), "Should have 3 buttons")
 
       // Verify that results were stored
-      verify(voiceManager).storeSearchResults("user123", searchResults)
+      verify(mocks.voiceManager).storeSearchResults("user123", searchResults)
     }
   }
 
   test("execute should create buttons with correct custom_ids") {
-    val voiceManager = mock[VoiceManager[IO]]
-    val youTube = mock[YouTubeSearchClient[IO]]
+    val mocks = CommandMocks[IO]()
 
     val searchResults = List(
       sampleYouTubeSearchResult(videoId = "video1", title = "Test Video 1"),
       sampleYouTubeSearchResult(videoId = "video2", title = "Test Video 2")
     )
 
-    youTube
+    mocks.youtubeSearch
       .on(it.search)((_, _) => IO.pure(searchResults))
 
-    voiceManager
+    mocks.voiceManager
       .on(it.storeSearchResults)((_, _) => IO.unit)
 
-    val command = new SearchCommand[IO](voiceManager, youTube)
+    val command = mocks.createSearchCommand()
 
     val context = CommandContext[IO](
       userId = "user123",
@@ -167,20 +163,19 @@ class SearchCommandTest extends CatsEffectSuite, Smockito {
   }
 
   test("execute should handle up to 5 results (button limit)") {
-    val voiceManager = mock[VoiceManager[IO]]
-    val youTube = mock[YouTubeSearchClient[IO]]
+    val mocks = CommandMocks[IO]()
 
     val searchResults = (1 to 10).map { i =>
       sampleYouTubeSearchResult(videoId = s"video$i", title = s"Test Video $i")
     }.toList
 
-    youTube
+    mocks.youtubeSearch
       .on(it.search)((_, _) => IO.pure(searchResults))
 
-    voiceManager
+    mocks.voiceManager
       .on(it.storeSearchResults)((_, _) => IO.unit)
 
-    val command = new SearchCommand[IO](voiceManager, youTube)
+    val command = mocks.createSearchCommand()
 
     val context = CommandContext[IO](
       userId = "user123",
@@ -202,21 +197,20 @@ class SearchCommandTest extends CatsEffectSuite, Smockito {
   }
 
   test("execute should truncate long titles") {
-    val voiceManager = mock[VoiceManager[IO]]
-    val youTube = mock[YouTubeSearchClient[IO]]
+    val mocks = CommandMocks[IO]()
 
     val longTitle = "A" * 100 // Very long title
     val searchResults = List(
       sampleYouTubeSearchResult(videoId = "video1", title = longTitle)
     )
 
-    youTube
+    mocks.youtubeSearch
       .on(it.search)((_, _) => IO.pure(searchResults))
 
-    voiceManager
+    mocks.voiceManager
       .on(it.storeSearchResults)((_, _) => IO.unit)
 
-    val command = new SearchCommand[IO](voiceManager, youTube)
+    val command = mocks.createSearchCommand()
 
     val context = CommandContext[IO](
       userId = "user123",

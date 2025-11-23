@@ -7,7 +7,8 @@ import dev.raegous.magicconch.*
 import dev.raegous.magicconch.audio.VoiceManager
 import dev.raegous.magicconch.discord.*
 import dev.raegous.magicconch.discord.DiscordModels.given
-import dev.raegous.magicconch.music.{PlayerControls, YouTubeSearchResult}
+import dev.raegous.magicconch.errors.*
+import dev.raegous.magicconch.music.{PlayerControls, TrackExtractor, YouTubeSearchResult}
 import io.circe.Printer
 import io.circe.syntax.*
 import sttp.ws.WebSocket
@@ -23,6 +24,7 @@ import sttp.ws.WebSocket
  */
 class SearchInteractionHandler[F[_]: Async](
   voiceManager: VoiceManager[F],
+  trackExtractor: TrackExtractor[F],
   discordApi: DiscordApiClient[F],
   applicationId: String
 )(using Logger[F]) extends ComponentInteractionHandler[F] {
@@ -66,7 +68,7 @@ class SearchInteractionHandler[F[_]: Async](
     for {
       _ <- Logger[F].info(s"[SEARCH] User selected: ${selected.title}")
       _ <- sendDeferredResponse(interaction)
-      trackOpt <- voiceManager.extractAudioFromYoutube(selected.url)
+      trackOpt <- trackExtractor.extractTrackInfo(selected.url)
       queueBefore <- voiceManager.getQueue(guildId)
       wasEmpty = queueBefore.tracks.isEmpty && queueBefore.currentTrack.isEmpty
       _ <- trackOpt.traverse { track =>
@@ -97,10 +99,13 @@ class SearchInteractionHandler[F[_]: Async](
   ): F[Unit] = {
     for {
       queueBefore <- voiceManager.getQueue(guildId)
-      _ <- voiceManager.addToQueue(guildId, track)
-      _ <- Option.when(queueBefore.tracks.isEmpty && queueBefore.currentTrack.isEmpty)(())
-        .traverse(_ => autoJoinAndPlay(guildId, userId, wsOpt))
-        .void
+      addResult <- voiceManager.addToQueue(guildId, track)
+      _ <- addResult.fold(
+        error => Logger[F].warn(s"[SEARCH] Failed to add track: ${error.message}"),
+        _ => Option.when(queueBefore.tracks.isEmpty && queueBefore.currentTrack.isEmpty)(())
+          .traverse(_ => autoJoinAndPlay(guildId, userId, wsOpt))
+          .void
+      )
     } yield ()
   }
 

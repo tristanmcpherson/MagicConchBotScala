@@ -5,13 +5,14 @@ import cats.effect.implicits.*
 import cats.implicits.*
 import dev.raegous.magicconch.*
 import dev.raegous.magicconch.audio.VoiceManager
-import dev.raegous.magicconch.music.YouTubeSearchClient
+import dev.raegous.magicconch.music.{TrackExtractor, YouTubeSearchClient}
 import org.typelevel.log4cats.Logger
 import dev.raegous.magicconch.discord.*
 import dev.raegous.magicconch.guilds.GuildSettingsManager
 
 class CommandRegistry[F[_]: Async](
   voiceManager: VoiceManager[F],
+  trackExtractor: TrackExtractor[F],
   youtubeSearch: YouTubeSearchClient[F],
   guildSettings: GuildSettingsManager[F],
   discordApi: DiscordApiClient[F],
@@ -19,7 +20,7 @@ class CommandRegistry[F[_]: Async](
 )(using Logger[F]) {
 
   private val commands: Map[String, Command[F]] = Map(
-    "play" -> new PlayCommand[F](voiceManager),
+    "play" -> new PlayCommand[F](voiceManager, trackExtractor),
     "stop" -> new StopCommand[F](voiceManager),
     "skip" -> new SkipCommand[F](voiceManager),
     "queue" -> new QueueCommand[F](voiceManager),
@@ -32,7 +33,7 @@ class CommandRegistry[F[_]: Async](
    * Interaction router for handling component interactions (buttons, select menus)
    */
   val interactionRouter: InteractionRouter[F] = {
-    val searchHandler = new SearchInteractionHandler[F](voiceManager, discordApi, applicationId)
+    val searchHandler = new SearchInteractionHandler[F](voiceManager, trackExtractor, discordApi, applicationId)
     val playerHandler = new PlayerInteractionHandler[F](voiceManager, discordApi, guildSettings)
 
     InteractionRouter[F](searchHandler, playerHandler)

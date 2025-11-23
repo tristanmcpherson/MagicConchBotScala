@@ -3,29 +3,22 @@ package dev.raegous.magicconch.commands
 import cats.effect.*
 import cats.effect.unsafe.implicits.global
 import dev.raegous.magicconch.*
+import dev.raegous.magicconch.MockFixtures.*
+import dev.raegous.magicconch.MockFixtures.Setups.*
 import dev.raegous.magicconch.TestFixtures.{testLogger, *}
 import dev.raegous.magicconch.discord.*
 import dev.raegous.magicconch.music.YouTubeSearchResult
 import munit.CatsEffectSuite
 import com.bdmendes.smockito.*
 import com.bdmendes.smockito.given
-import dev.raegous.magicconch.audio.VoiceManager
 import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito.verify
-import sttp.ws.WebSocket
 
 class SearchInteractionHandlerTest extends CatsEffectSuite, Smockito {
 
-  def createMocks(): (Mock[VoiceManager[IO]], Mock[DiscordApiClient[IO]]) = {
-    val voiceManager = mock[VoiceManager[IO]]
-    val discordApi = mock[DiscordApiClient[IO]]
-
-    (voiceManager, discordApi)
-  }
-
   test("canHandle should return true for search_select_ custom_ids") {
-    val (voiceManager, discordApi) = createMocks()
-    val handler = new SearchInteractionHandler[IO](voiceManager, discordApi, "app_123")
+    val mocks = SearchMocks[IO]()
+    val handler = mocks.createHandler()
 
     assert(handler.canHandle("search_select_user123_0"))
     assert(handler.canHandle("search_select_user456_1"))
@@ -34,7 +27,7 @@ class SearchInteractionHandlerTest extends CatsEffectSuite, Smockito {
   }
 
   test("handle should process valid search selection") {
-    val (voiceManager, discordApi) = createMocks()
+    val mocks = SearchMocks[IO]()
 
     val searchResults = List(
       sampleYouTubeSearchResult(videoId = "video1", title = "Test Video 1"),
@@ -43,20 +36,19 @@ class SearchInteractionHandlerTest extends CatsEffectSuite, Smockito {
     val testTrack = sampleMusicTrack(title = "Test Track", url = "https://youtube.com/watch?v=video1")
     val emptyQueue = sampleMusicQueue()
 
-    // Setup mock behavior
-    voiceManager
-      .on(it.getSearchResults)((_) => IO.pure(Some(searchResults)))
-      .on(it.extractAudioFromYoutube)((_) => IO.pure(Some(testTrack)))
-      .on(it.getQueue)((_) => IO.pure(emptyQueue))
-      .on(it.addToQueue)((_, _) => IO.unit)
-      .on(it.clearSearchResults)((_) => IO.unit)
+    // Setup mocks using utilities
+    withSearchResults(mocks.voiceManager, "user123", searchResults)
+    withTrackExtraction(mocks.trackExtractor, "", Some(testTrack))
+    withQueue(mocks.voiceManager, "guild123", emptyQueue)
+    withDiscordApi(mocks.discordApi)
 
-    discordApi
-      .on(it.sendInteractionResponse)((_, _, _) => IO.unit)
-      .on(it.editInteractionResponse)((_, _, _) => IO.unit)
+    mocks.voiceManager
+      .on(it.addToQueue)((_, _) => IO.pure(Right(())))
+
+    mocks.discordApi
       .on(it.editRichInteractionResponse)((_, _, _, _, _) => IO.unit)
 
-    val handler = new SearchInteractionHandler[IO](voiceManager, discordApi, "app_123")
+    val handler = mocks.createHandler()
 
     val interaction = sampleInteraction(
       id = "interaction_123",
@@ -67,34 +59,33 @@ class SearchInteractionHandlerTest extends CatsEffectSuite, Smockito {
 
     handler.handle("search_select_user123_0", interaction, None).map { _ =>
       // Verify that search results were retrieved
-      verify(voiceManager).getSearchResults("user123")
+      verify(mocks.voiceManager).getSearchResults("user123")
 
-      // Verify that track was extracted from YouTube
-      verify(voiceManager).extractAudioFromYoutube(any[String])
+      // Verify that track was extracted
+      verify(mocks.trackExtractor).extractTrackInfo(any[String])
 
       // Verify that track was added to queue
-      verify(voiceManager).addToQueue(any[String], any[MusicTrack])
+      verify(mocks.voiceManager).addToQueue(any[String], any[MusicTrack])
 
       // Verify that search results were cleared
-      verify(voiceManager).clearSearchResults("user123")
+      verify(mocks.voiceManager).clearSearchResults("user123")
 
       // Verify that responses were sent
-      verify(discordApi).sendInteractionResponse(any[String], any[String], any[String])
-      verify(discordApi).editRichInteractionResponse(any[String], any[String], any[String], any[Option[List[MessageEmbed]]], any[Option[List[MessageComponent]]])
+      verify(mocks.discordApi).sendInteractionResponse(any[String], any[String], any[String])
+      verify(mocks.discordApi).editRichInteractionResponse(any[String], any[String], any[String], any[Option[List[MessageEmbed]]], any[Option[List[MessageComponent]]])
     }
   }
 
   test("handle should send error for expired search results") {
-    val (voiceManager, discordApi) = createMocks()
+    val mocks = SearchMocks[IO]()
 
     // Setup mock to return no results (expired)
-    voiceManager
+    mocks.voiceManager
       .on(it.getSearchResults)((_) => IO.pure(None))
 
-    discordApi
-      .on(it.sendInteractionResponse)((_, _, _) => IO.unit)
+    withDiscordApi(mocks.discordApi)
 
-    val handler = new SearchInteractionHandler[IO](voiceManager, discordApi, "app_123")
+    val handler = mocks.createHandler()
 
     val interaction = sampleInteraction(
       customId = Some("search_select_user123_0"),
@@ -103,24 +94,21 @@ class SearchInteractionHandlerTest extends CatsEffectSuite, Smockito {
 
     handler.handle("search_select_user123_0", interaction, None).map { _ =>
       // Verify that expired response was sent
-      verify(discordApi).sendInteractionResponse(any[String], any[String], any[String])
+      verify(mocks.discordApi).sendInteractionResponse(any[String], any[String], any[String])
     }
   }
 
   test("handle should send error for invalid index") {
-    val (voiceManager, discordApi) = createMocks()
+    val mocks = SearchMocks[IO]()
 
     val searchResults = List(
       sampleYouTubeSearchResult(videoId = "video1", title = "Test Video 1")
     )
 
-    voiceManager
-      .on(it.getSearchResults)(_ => IO.pure(Some(searchResults)))
+    withSearchResults(mocks.voiceManager, "user123", searchResults)
+    withDiscordApi(mocks.discordApi)
 
-    discordApi
-      .on(it.sendInteractionResponse)(_ => IO.unit)
-
-    val handler = new SearchInteractionHandler[IO](voiceManager, discordApi, "app_123")
+    val handler = mocks.createHandler()
 
     val interaction = sampleInteraction(
       customId = Some("search_select_user123_5"), // Index out of bounds
@@ -129,13 +117,13 @@ class SearchInteractionHandlerTest extends CatsEffectSuite, Smockito {
 
     handler.handle("search_select_user123_5", interaction, None).map { _ =>
       // Verify that error response was sent
-      verify(discordApi).sendInteractionResponse(any[String], any[String], any[String])
+      verify(mocks.discordApi).sendInteractionResponse(any[String], any[String], any[String])
     }
   }
 
   test("handle should handle invalid custom_id format gracefully") {
-    val (voiceManager, discordApi) = createMocks()
-    val handler = new SearchInteractionHandler[IO](voiceManager, discordApi, "app_123")
+    val mocks = SearchMocks[IO]()
+    val handler = mocks.createHandler()
 
     val interaction = sampleInteraction(
       customId = Some("search_select_invalid") // Missing parts

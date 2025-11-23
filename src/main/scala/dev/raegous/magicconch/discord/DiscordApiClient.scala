@@ -111,17 +111,17 @@ class DiscordApiClient[F[_]: Async](token: String, backend: WebSocketStreamBacke
       request.send(backend).flatMap { response =>
         response.code.code match {
           case 200 | 201 =>
-            Logger[F].debug(s"Guild slash command registered successfully: ${response.code}")
+            Logger[F].debug(s"Guild slash command registered successfully: ${response.code}") >>
             Async[F].pure(response.body.toString)
           case 429 =>
             val retryAfter = response.header("Retry-After")
               .flatMap(_.toIntOption)
               .getOrElse(1)
-            Logger[F].warn(s"Rate limited, retrying after ${retryAfter} seconds")
+            Logger[F].warn(s"Rate limited, retrying after ${retryAfter} seconds") >>
             Async[F].sleep(scala.concurrent.duration.Duration(retryAfter, "seconds")) >>
             attemptRegistration()
           case _ =>
-            Logger[F].error(s"Failed to register guild slash command: ${response.code} - ${response.body}")
+            Logger[F].error(s"Failed to register guild slash command: ${response.code} - ${response.body}") >>
             Async[F].pure(s"Error: ${response.code}")
         }
       }
@@ -135,8 +135,16 @@ class DiscordApiClient[F[_]: Async](token: String, backend: WebSocketStreamBacke
       .get(uri"${DiscordApiClient.commandsUrl(applicationId)}")
       .header("Authorization", s"Bot $token")
 
-    OptionT.liftF(request.send(backend))
-      .subflatMap(_.body.toOption)
+    val doMyWork: F[Option[String]] = ???
+    val logWork: Option[String] => F[Unit] = ???
+
+    val result = doMyWork.flatTap(option => logWork(option))
+    logWork
+
+
+
+    var response = request.send(backend).map(a => a.body.toOption)
+    OptionT(response)
       .filter(_.nonEmpty)
       .semiflatTap(body => Logger[F].debug(s"Raw global commands response: $body"))
       .subflatMap(body => decode[List[SlashCommand]](body).toOption)
@@ -274,7 +282,6 @@ class DiscordApiClient[F[_]: Async](token: String, backend: WebSocketStreamBacke
       .body(response)
 
     for {
-      _ <- Logger[F].info(s"Sending interaction response: $response")
       httpResponse <- request.send(backend)
       _ <- if (httpResponse.code.isSuccess) {
         Logger[F].info(s"Interaction response sent successfully: ${httpResponse.code}")

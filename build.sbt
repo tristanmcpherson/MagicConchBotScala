@@ -5,7 +5,7 @@ ThisBuild / scalaVersion := "3.3.0"
 lazy val root = (project in file("."))
   .settings(
     name := "magicconch",
-    scalacOptions ++= Seq("-Xmax-inlines", "64", "-deprecation", "-feature", "-language:implicitConversions"),
+    scalacOptions ++= Seq("-Xmax-inlines", "64", "-language:implicitConversions"),
     assembly / assemblyMergeStrategy := {
       case "META-INF/MANIFEST.MF" => MergeStrategy.discard
       case "META-INF/services/org.apache.logging.log4j.spi.Provider" => MergeStrategy.first

@@ -65,7 +65,7 @@ object VoiceGateway {
       )
 
     // Wrap in Resource to ensure proper cleanup
-    Resource.make(allocate)(_.closeVoiceConnection().guaranteeCase(_ => Applicative[F].unit))
+    Resource.make(allocate)(_.closeVoiceConnection().attempt.void)
 
   }
 }

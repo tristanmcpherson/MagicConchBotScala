@@ -4,6 +4,7 @@ import cats.effect.*
 import dev.raegous.magicconch.TestFixtures.{testLogger, *}
 import dev.raegous.magicconch.discord.*
 import dev.raegous.magicconch.commands.CommandRegistry
+import dev.raegous.magicconch.MockFixtures.*
 import munit.CatsEffectSuite
 import com.bdmendes.smockito.*
 import com.bdmendes.smockito.given
@@ -12,59 +13,16 @@ import dev.raegous.magicconch.audio.VoiceManager
 import dev.raegous.magicconch.discord.DiscordModels.*
 import dev.raegous.magicconch.discord.DiscordModels.given
 import dev.raegous.magicconch.guilds.{GuildSettingsManager, GuildTracker}
+import dev.raegous.magicconch.music.TrackExtractor
 import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito.{times, verify}
 import sttp.ws.WebSocket
 import io.circe.syntax.*
 
 class GatewayEventHandlerTest extends CatsEffectSuite, Smockito {
-
-  def createMocks(): (
-    Mock[MessageHandler[IO]],
-    Mock[VoiceManager[IO]],
-    Mock[SlashCommandManager[IO]],
-    Mock[DiscordApiClient[IO]],
-    Mock[GuildTracker[IO]],
-    Mock[GuildSettingsManager[IO]],
-    Mock[CommandRegistry[IO]],
-    Mock[WebSocket[IO]]
-  ) = {
-    val messageHandler = mock[MessageHandler[IO]]
-    val voiceManager = mock[VoiceManager[IO]]
-    val slashCommandManager = mock[SlashCommandManager[IO]]
-    val discordApi = mock[DiscordApiClient[IO]]
-    val guildTracker = mock[GuildTracker[IO]]
-    val guildSettings = mock[GuildSettingsManager[IO]]
-    val commandRegistry = mock[CommandRegistry[IO]]
-    val ws = mock[WebSocket[IO]]
-
-    (messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry, ws)
-  }
-
-  def createHandler(
-    messageHandler: MessageHandler[IO],
-    voiceManager: VoiceManager[IO],
-    slashCommandManager: SlashCommandManager[IO],
-    discordApi: DiscordApiClient[IO],
-    guildTracker: GuildTracker[IO],
-    guildSettings: GuildSettingsManager[IO],
-    commandRegistry: CommandRegistry[IO]
-  ): IO[GatewayEventHandler[IO]] = {
-    GatewayEventHandler.make[IO](
-      token = "test_token",
-      applicationId = "app_123",
-      messageHandler = messageHandler,
-      voiceManager = voiceManager,
-      slashCommandManager = slashCommandManager,
-      discordApi = discordApi,
-      guildTracker = guildTracker,
-      guildSettings = guildSettings,
-      commandRegistry = commandRegistry
-    ).use(handler => IO.pure(handler))
-  }
-
   test("handlePayload should handle Hello (opcode 10) and send identify") {
-    val (messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry, ws) = createMocks()
+    val mocks = GatewayMocks[IO]()
+    val ws = mock[WebSocket[IO]]
 
     ws.on(it.sendText)(_ => IO.unit)
 
@@ -74,75 +32,75 @@ class GatewayEventHandlerTest extends CatsEffectSuite, Smockito {
       d = Some(helloPayload.asJson)
     )
 
-    for {
-      handler <- createHandler(messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry)
-      result <- handler.handlePayload(payload, ws)
-    } yield {
-      assertEquals(result.heartbeatInterval, Some(41250))
+    mocks.createHandler().use { handler =>
+      handler.handlePayload(payload, ws).map { result =>
+        assertEquals(result.heartbeatInterval, Some(41250))
+      }
     }
   }
 
   test("handlePayload should handle Heartbeat ACK (opcode 11)") {
-    val (messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry, ws) = createMocks()
+    val mocks = GatewayMocks[IO]()
+    val ws = mock[WebSocket[IO]]
 
     val payload = sampleGatewayPayload(op = 11)
 
-    for {
-      handler <- createHandler(messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry)
-      result <- handler.handlePayload(payload, ws)
-    } yield {
-      assertEquals(result.heartbeatInterval, None)
+    mocks.createHandler().use { handler =>
+      handler.handlePayload(payload, ws).map { result =>
+        assertEquals(result.heartbeatInterval, None)
+      }
     }
   }
 
   test("handlePayload should handle Heartbeat Request (opcode 1) and send heartbeat") {
-    val (messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry, ws) = createMocks()
+    val mocks = GatewayMocks[IO]()
+    val ws = mock[WebSocket[IO]]
 
     ws.on(it.sendText)(_ => IO.unit)
 
     val payload = sampleGatewayPayload(op = 1, s = Some(42))
 
-    for {
-      handler <- createHandler(messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry)
-      result <- handler.handlePayload(payload, ws)
-    } yield {
-      // Successfully sent heartbeat (no assertions needed since we just verify no errors)
-      assert(true)
+    mocks.createHandler().use { handler =>
+      handler.handlePayload(payload, ws).map { _ =>
+        // Successfully sent heartbeat (no assertions needed since we just verify no errors)
+        assert(true)
+      }
     }
   }
 
   test("handlePayload should handle Invalid Session (opcode 9) and raise error") {
-    val (messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry, ws) = createMocks()
+    val mocks = GatewayMocks[IO]()
+    val ws = mock[WebSocket[IO]]
 
     val payload = sampleGatewayPayload(op = 9)
 
-    for {
-      handler <- createHandler(messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry)
-      result <- handler.handlePayload(payload, ws).attempt
-    } yield {
-      assert(result.isLeft, "Should raise error for Invalid Session")
+    mocks.createHandler().use { handler =>
+      handler.handlePayload(payload, ws).attempt.map { result =>
+        assert(result.isLeft, "Should raise error for Invalid Session")
+      }
     }
   }
 
   test("handlePayload should handle Reconnect (opcode 7) and raise error") {
-    val (messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry, ws) = createMocks()
+    val mocks = GatewayMocks[IO]()
+    val ws = mock[WebSocket[IO]]
 
     val payload = sampleGatewayPayload(op = 7)
 
-    for {
-      handler <- createHandler(messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry)
-      result <- handler.handlePayload(payload, ws).attempt
-    } yield {
-      assert(result.isLeft, "Should raise error for Reconnect")
+    mocks.createHandler().use { handler =>
+      handler.handlePayload(payload, ws).attempt.map { result =>
+        assert(result.isLeft, "Should raise error for Reconnect")
+      }
     }
   }
 
   test("handleDispatchEvent should handle READY event") {
-    val (messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry, ws) = createMocks()
+    val mocks = GatewayMocks[IO]()
+    val ws = mock[WebSocket[IO]]
 
-    voiceManager.on(it.setBotUserId)(_ => IO.unit)
+    mocks.voiceManager.on(it.setBotUserId)(_ => IO.unit)
 
-    slashCommandManager.on(() => it.registerSlashCommands())(_ => IO.unit)
+    mocks.slashCommandManager.on(() => it.registerSlashCommands())(_ => IO.unit)
 
     val readyPayload = sampleReadyPayload("bot_456", "TestBot")
     val payload = sampleGatewayPayload(
@@ -151,21 +109,21 @@ class GatewayEventHandlerTest extends CatsEffectSuite, Smockito {
       t = Some("READY")
     )
 
-    for {
-      handler <- createHandler(messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry)
-      result <- handler.handlePayload(payload, ws)
-    } yield {
-      assertEquals(result.heartbeatInterval, None)
+    mocks.createHandler().use { handler =>
+      handler.handlePayload(payload, ws).map { result =>
+        assertEquals(result.heartbeatInterval, None)
+      }
     }
   }
 
   test("handleDispatchEvent should handle GUILD_CREATE event and track guild") {
-    val (messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry, ws) = createMocks()
+    val mocks = GatewayMocks[IO]()
+    val ws = mock[WebSocket[IO]]
 
-    guildTracker
+    mocks.guildTracker
       .on(it.addGuild)((_, _, _) => IO.unit)
 
-    voiceManager
+    mocks.voiceManager
       .on(it.populateVoiceStates)(_ => IO.unit)
 
     val guildCreate = sampleGuildCreate("guild_789", "Test Server", 150)
@@ -175,19 +133,19 @@ class GatewayEventHandlerTest extends CatsEffectSuite, Smockito {
       t = Some("GUILD_CREATE")
     )
 
-    for {
-      handler <- createHandler(messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry)
-      result <- handler.handlePayload(payload, ws)
-    } yield {
-      // Guild was successfully tracked
-      assert(true)
+    mocks.createHandler().use { handler =>
+      handler.handlePayload(payload, ws).map { _ =>
+        // Guild was successfully tracked
+        assert(true)
+      }
     }
   }
 
   test("handleDispatchEvent should handle MESSAGE_CREATE event and delegate to messageHandler") {
-    val (messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry, ws) = createMocks()
+    val mocks = GatewayMocks[IO]()
+    val ws = mock[WebSocket[IO]]
 
-    messageHandler
+    mocks.messageHandler
       .on(it.handleMessage)((_, _) => IO.unit)
 
     val message = sampleDiscordMessage(content = "!help", isBot = false)
@@ -197,19 +155,19 @@ class GatewayEventHandlerTest extends CatsEffectSuite, Smockito {
       t = Some("MESSAGE_CREATE")
     )
 
-    for {
-      handler <- createHandler(messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry)
-      result <- handler.handlePayload(payload, ws)
-    } yield {
-      // Message was handled successfully
-      assert(true)
+    mocks.createHandler().use { handler =>
+      handler.handlePayload(payload, ws).map { _ =>
+        // Message was handled successfully
+        assert(true)
+      }
     }
   }
 
   test("handleDispatchEvent should ignore bot messages in MESSAGE_CREATE") {
-    val (messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry, ws) = createMocks()
+    val mocks = GatewayMocks[IO]()
+    val ws = mock[WebSocket[IO]]
 
-    messageHandler
+    mocks.messageHandler
       .on(it.handleMessage)((_, _) => IO.unit)
 
     val botMessage = sampleDiscordMessage(content = "Bot response", isBot = true)
@@ -219,24 +177,24 @@ class GatewayEventHandlerTest extends CatsEffectSuite, Smockito {
       t = Some("MESSAGE_CREATE")
     )
 
-    for {
-      handler <- createHandler(messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry)
-      result <- handler.handlePayload(payload, ws)
-    } yield {
-      // Bot message should be ignored
-      assert(true)
+    mocks.createHandler().use { handler =>
+      handler.handlePayload(payload, ws).map { _ =>
+        // Bot message should be ignored
+        assert(true)
+      }
     }
   }
 
   test("handleDispatchEvent should handle INTERACTION_CREATE for slash commands") {
-    val (messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry, ws) = createMocks()
+    val mocks = GatewayMocks[IO]()
+    val ws = mock[WebSocket[IO]]
 
     val interactionResponse = InteractionResponse(`type` = 4, data = None)
 
-    slashCommandManager
+    mocks.slashCommandManager
       .on(it.handleSlashCommand)((_, _) => IO.pure(interactionResponse))
 
-    discordApi
+    mocks.discordApi
       .on(it.sendInteractionResponse)((_, _, _) => IO.unit)
 
     val interaction = sampleInteraction().copy(
@@ -249,17 +207,17 @@ class GatewayEventHandlerTest extends CatsEffectSuite, Smockito {
       t = Some("INTERACTION_CREATE")
     )
 
-    for {
-      handler <- createHandler(messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry)
-      result <- handler.handlePayload(payload, ws)
-    } yield {
-      // Interaction was handled successfully
-      assert(true)
+    mocks.createHandler().use { handler =>
+      handler.handlePayload(payload, ws).map { _ =>
+        // Interaction was handled successfully
+        assert(true)
+      }
     }
   }
 
   test("handleDispatchEvent should handle unrecognized event types gracefully") {
-    val (messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry, ws) = createMocks()
+    val mocks = GatewayMocks[IO]()
+    val ws = mock[WebSocket[IO]]
 
     val payload = sampleGatewayPayload(
       op = 0,
@@ -267,32 +225,33 @@ class GatewayEventHandlerTest extends CatsEffectSuite, Smockito {
       t = Some("UNKNOWN_EVENT_TYPE")
     )
 
-    for {
-      handler <- createHandler(messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry)
-      result <- handler.handlePayload(payload, ws)
-    } yield {
-      assertEquals(result.heartbeatInterval, None)
+    mocks.createHandler().use { handler =>
+      handler.handlePayload(payload, ws).map { result =>
+        assertEquals(result.heartbeatInterval, None)
+      }
     }
   }
 
   test("handlePayload should update sequence number") {
-    val (messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry, ws) = createMocks()
+    val mocks = GatewayMocks[IO]()
+    val ws = mock[WebSocket[IO]]
 
     val payload1 = sampleGatewayPayload(op = 11, s = Some(100))
     val payload2 = sampleGatewayPayload(op = 11, s = Some(101))
 
     ws.on(it.sendText)(_ => IO.unit)
 
-    for {
-      handler <- createHandler(messageHandler, voiceManager, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry)
-      _ <- handler.handlePayload(payload1, ws)
-      _ <- handler.handlePayload(payload2, ws)
-      // Trigger heartbeat to verify sequence was updated
-      heartbeatPayload = sampleGatewayPayload(op = 1, s = Some(102))
-      _ <- handler.handlePayload(heartbeatPayload, ws)
-    } yield {
-      // Heartbeat was sent successfully
-      assert(true)
+    mocks.createHandler().use { handler =>
+      for {
+        _ <- handler.handlePayload(payload1, ws)
+        _ <- handler.handlePayload(payload2, ws)
+        // Trigger heartbeat to verify sequence was updated
+        heartbeatPayload = sampleGatewayPayload(op = 1, s = Some(102))
+        _ <- handler.handlePayload(heartbeatPayload, ws)
+      } yield {
+        // Heartbeat was sent successfully
+        assert(true)
+      }
     }
   }
 }

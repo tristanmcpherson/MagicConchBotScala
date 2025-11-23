@@ -40,7 +40,10 @@
       "mcp__jetbrains-mcp__execute_run_configuration",
       "mcp__jetbrains-mcp__get_file_problems",
       "mcp__jetbrains-mcp__execute_terminal_command",
-      "mcp__jetbrains-mcp__get_file_text_by_path"
+      "mcp__jetbrains-mcp__get_file_text_by_path",
+      "mcp__jetbrains-mcp__list_directory_tree",
+      "mcp__jetbrains-mcp__search_in_files_by_text",
+      "Bash(find:*)"
     ],
     "deny": []
   },

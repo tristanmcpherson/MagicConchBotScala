@@ -1,14 +1,14 @@
-package dev.raegous.magicconch
+package dev.raegous.magicconch.discord
 
 import cats.effect.*
 import org.typelevel.log4cats.Logger
 import sttp.client4.*
 import io.circe.syntax.*
 import cats.implicits.*
+import dev.raegous.magicconch.commands.*
 import dev.raegous.magicconch.discord.*
 import dev.raegous.magicconch.discord.DiscordModels.*
 import dev.raegous.magicconch.discord.DiscordModels.given
-import commands.*
 
 class SlashCommandManager[F[_]: Async](
   token: String,
@@ -43,18 +43,17 @@ class SlashCommandManager[F[_]: Async](
 
     discordApi.getGlobalSlashCommands(applicationId).flatMap { allCommands =>
       // IMPORTANT: Only manage commands owned by THIS bot (filter by application_id)
-      val existingCommands = allCommands.filter(_.application_id == applicationId)
-      val existingCommandNames = existingCommands.map(_.name).toSet
+      val existingCommandNames = allCommands.map(_.name).toSet
 
       // Commands to ADD: in desired but not in Discord
       val commandsToRegister = desiredCommands.filterNot(cmd => existingCommandNames.contains(cmd.name))
 
       // Commands to DELETE: in Discord but not in desired (removed from registry)
       // Only delete commands owned by this bot!
-      val commandsToDelete = existingCommands.filterNot(cmd => desiredCommandNames.contains(cmd.name))
+      val commandsToDelete = allCommands.filterNot(cmd => desiredCommandNames.contains(cmd.name))
 
       for {
-        _ <- Logger[F].info(s"Retrieved ${allCommands.length} total global commands (${existingCommands.length} owned by this bot)")
+        _ <- Logger[F].info(s"Retrieved ${allCommands.length} total global commands")
 
         // Delete stale commands first
         _ <- if (commandsToDelete.nonEmpty) {
@@ -71,7 +70,7 @@ class SlashCommandManager[F[_]: Async](
           Logger[F].info(s"Registering ${commandsToRegister.length} new commands: ${commandsToRegister.map(_.name).mkString(", ")}") >>
           commandsToRegister.traverse_(registerGlobalCommand)
         } else {
-          Logger[F].info(s"${existingCommands.length} commands up to date")
+          Logger[F].info(s"${allCommands.length} commands up to date")
         }
       } yield ()
     }
@@ -84,18 +83,17 @@ class SlashCommandManager[F[_]: Async](
 
     discordApi.getGuildSlashCommands(applicationId, guildId).flatMap { allCommands =>
       // IMPORTANT: Only manage commands owned by THIS bot (filter by application_id)
-      val existingCommands = allCommands.filter(_.application_id == applicationId)
-      val existingCommandNames = existingCommands.map(_.name).toSet
+      val existingCommandNames = allCommands.map(_.name).toSet
 
       // Commands to ADD: in desired but not in Discord
       val commandsToRegister = desiredCommands.filterNot(cmd => existingCommandNames.contains(cmd.name))
 
       // Commands to DELETE: in Discord but not in desired (removed from registry)
       // Only delete commands owned by this bot!
-      val commandsToDelete = existingCommands.filterNot(cmd => desiredCommandNames.contains(cmd.name))
+      val commandsToDelete = allCommands.filterNot(cmd => desiredCommandNames.contains(cmd.name))
 
       for {
-        _ <- Logger[F].info(s"Guild $guildId: Retrieved ${allCommands.length} total commands (${existingCommands.length} owned by this bot)")
+        _ <- Logger[F].info(s"Guild $guildId: Retrieved ${allCommands.length} total commands")
 
         // Delete stale commands first
         _ <- if (commandsToDelete.nonEmpty) {
@@ -112,7 +110,7 @@ class SlashCommandManager[F[_]: Async](
           Logger[F].info(s"Guild $guildId: Registering ${commandsToRegister.length} new commands: ${commandsToRegister.map(_.name).mkString(", ")}") >>
           commandsToRegister.traverse_(cmd => registerGuildCommand(guildId, cmd))
         } else {
-          Logger[F].info(s"Guild $guildId: ${existingCommands.length} commands up to date")
+          Logger[F].info(s"Guild $guildId: ${allCommands.length} commands up to date")
         }
       } yield ()
     }
