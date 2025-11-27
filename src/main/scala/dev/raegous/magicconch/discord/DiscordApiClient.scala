@@ -135,14 +135,6 @@ class DiscordApiClient[F[_]: Async](token: String, backend: WebSocketStreamBacke
       .get(uri"${DiscordApiClient.commandsUrl(applicationId)}")
       .header("Authorization", s"Bot $token")
 
-    val doMyWork: F[Option[String]] = ???
-    val logWork: Option[String] => F[Unit] = ???
-
-    val result = doMyWork.flatTap(option => logWork(option))
-    logWork
-
-
-
     var response = request.send(backend).map(a => a.body.toOption)
     OptionT(response)
       .filter(_.nonEmpty)
