@@ -13,15 +13,6 @@ import io.circe.Printer
 import io.circe.syntax.*
 import sttp.ws.WebSocket
 
-/**
- * Handles interactions from search result buttons
- *
- * When a user clicks a button from /search results, this handler:
- * 1. Retrieves the selected video from cached search results
- * 2. Extracts audio from the YouTube URL
- * 3. Adds the track to the queue
- * 4. Auto-joins voice channel and plays if queue was empty
- */
 class SearchInteractionHandler[F[_]: Async](
   voiceManager: VoiceManager[F],
   trackExtractor: TrackExtractor[F],
@@ -79,10 +70,11 @@ class SearchInteractionHandler[F[_]: Async](
             _ <- voiceManager.clearSearchResults(userId)
             queueAfter <- voiceManager.getQueue(guildId)
             components = PlayerControls.createPlayerControls(guildId, queueAfter)
-            message = if (wasEmpty)
+            message = Option.when(wasEmpty)(
               s"Now playing: **${trackOpt.map(_.title).getOrElse("")}**"
-            else
+            ).getOrElse(
               s"Added to queue: **${trackOpt.map(_.title).getOrElse("")}**"
+            )
             _ <- discordApi.editRichInteractionResponse(applicationId, interaction.token, message, None, components)
           } yield ()
         case None =>

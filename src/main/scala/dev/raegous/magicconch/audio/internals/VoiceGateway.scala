@@ -204,22 +204,23 @@ class VoiceGateway[F[_]: Async: fs2.io.process.Processes] private (
         .evalMap { _ =>
           // Check if still connected before attempting to send heartbeat
           isConnectedRef.get.flatMap { isConnected =>
-            if (isConnected) {
+            Option.when(isConnected)(
               sendHeartbeat(ws).handleErrorWith { error =>
                 val errorMsg = Option(error.getMessage).getOrElse("unknown error")
-                if (errorMsg.contains("closed") || errorMsg.contains("Closed") || errorMsg.contains("Output closed")) {
+                Option.when(
+                  errorMsg.contains("closed") || errorMsg.contains("Closed") || errorMsg.contains("Output closed")
+                )(
                   Logger[F].warn(s"[VOICE] Heartbeat stopped - WebSocket closed") >>
-                  isConnectedRef.set(false) >>  // Mark as disconnected
-                  Async[F].raiseError(error)  // Stop the stream by raising the error
-                } else {
+                  isConnectedRef.set(false) >>
+                  Async[F].raiseError(error)
+                ).getOrElse(
                   Logger[F].warn(s"[VOICE] Failed to send voice heartbeat: $errorMsg")
-                }
+                )
               }
-            } else {
-              // Connection closed, stop the heartbeat loop gracefully
+            ).getOrElse(
               Logger[F].debug(s"[VOICE] Heartbeat loop exiting - connection closed") >>
               Async[F].raiseError(new Exception("Voice connection closed"))
-            }
+            )
           }
         }
         .compile
@@ -230,12 +231,10 @@ class VoiceGateway[F[_]: Async: fs2.io.process.Processes] private (
     }.void
   }
 
-  private def waitForVoiceReady: F[Unit] = {
+  private def waitForVoiceReady: F[Unit] =
     voiceReadyRef.get.flatMap { ready =>
-      if (ready) Async[F].unit
-      else Async[F].sleep(100.millis) >> waitForVoiceReady
+      Option.when(ready)(Async[F].unit).getOrElse(Async[F].sleep(100.millis) >> waitForVoiceReady)
     }
-  }
   
   private def sendVoiceIdentify(
     ws: WebSocket[F],
@@ -290,13 +289,13 @@ class VoiceGateway[F[_]: Async: fs2.io.process.Processes] private (
     ).foreverM
       .handleErrorWith { error =>
         val errorMsg = Option(error.getMessage).getOrElse("WebSocket closed")
-        if (errorMsg.contains("closed") || errorMsg.contains("Closed")) {
-          isConnectedRef.set(false) >>  // Mark as disconnected
+        Option.when(errorMsg.contains("closed") || errorMsg.contains("Closed"))(
+          isConnectedRef.set(false) >>
           Logger[F].debug(s"[VOICE] Voice WebSocket closed - audio streaming completed $error")
-        } else {
+        ).getOrElse(
           Logger[F].error(s"[VOICE] Voice event loop error: $errorMsg") >>
           Logger[F].debug(s"[VOICE] Stack trace: ${error.getStackTrace.take(3).mkString("\n")}")
-        }
+        )
       }
 
     eventLoop

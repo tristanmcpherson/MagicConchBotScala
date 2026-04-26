@@ -1,9 +1,6 @@
 package dev.raegous.magicconch
 
-import cats.Applicative
 import cats.effect.*
-import cats.syntax.applicative.*
-import cats.syntax.applicative._
 import cats.implicits.*
 import cats.data.OptionT
 import org.typelevel.log4cats.Logger
@@ -21,24 +18,22 @@ class MessageHandler[F[_]: Async](
 
     val hasAudioAttachment = message.attachments.exists(_.exists(attachment =>
       attachment.content_type.exists(ct =>
-        ct.startsWith("audio/") || attachment.duration_secs.isDefined
+        ct.startsWith("audio/") || attachment.duration_secs.nonEmpty
       )
     ))
 
-    Applicative[F].whenA(!isVoiceMessage && !hasAudioAttachment)(handleTextMessage(message, ws))
+    Async[F].whenA(!isVoiceMessage && !hasAudioAttachment)(handleTextMessage(message, ws))
   }
 
   private def handleTextMessage(message: DiscordMessage, ws: WebSocket[F]): F[Unit] = {
     val contentLower = message.content.toLowerCase
     val content = message.content
 
-    // Parse command from message (format: !commandname args)
-    if (contentLower.startsWith("!")) {
+    Async[F].whenA(contentLower.startsWith("!")) {
       val parts = content.drop(1).split(" ", 2)
       val commandName = parts(0).toLowerCase
-      val argsString = if (parts.length > 1) parts(1) else ""
+      val argsString = parts.lift(1).getOrElse("")
 
-      // Use OptionT to chain Option operations without nesting
       val result = for {
         guildId <- OptionT.fromOption[F](message.guild_id)
         _ <- OptionT.fromOption[F](Option.when(commandRegistry.hasCommand(commandName))(()))
@@ -64,16 +59,11 @@ class MessageHandler[F[_]: Async](
         }
       }
 
-      result.value.flatMap {
-        case Some(action) => action
-        case None =>
-          // If guild_id is missing, send error; otherwise silently ignore
-          message.guild_id.fold(
-            discordApi.sendMessage(message.channel_id, "This command only works in a server!")
-          )(_ => Async[F].unit)
-      }
-    } else {
-      Async[F].unit
+      result.value.flatMap(_.fold(
+        message.guild_id.fold(
+          discordApi.sendMessage(message.channel_id, "This command only works in a server!")
+        )(_ => Async[F].unit)
+      )(identity))
     }
   }
 

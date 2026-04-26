@@ -113,24 +113,13 @@ class QueueManager[F[_]: Async](
     getQueue(guildId).map(_.isPaused)
   }
 
-  /**
-   * Get current playback position in seconds
-   */
-  def getCurrentPosition(guildId: String): F[Int] = {
+  def getCurrentPosition(guildId: String): F[Int] =
     getQueue(guildId).map { queue =>
-      if (queue.isPaused) {
-        queue.currentPosition
-      } else {
-        queue.startTime match {
-          case Some(start) =>
-            val elapsed = ((System.currentTimeMillis() - start) / 1000).toInt
-            queue.currentPosition + elapsed
-          case None =>
-            queue.currentPosition
-        }
+      queue.startTime.filter(_ => !queue.isPaused).fold(queue.currentPosition) { start =>
+        val elapsed = ((System.currentTimeMillis() - start) / 1000).toInt
+        queue.currentPosition + elapsed
       }
     }
-  }
 }
 
 object QueueManager {

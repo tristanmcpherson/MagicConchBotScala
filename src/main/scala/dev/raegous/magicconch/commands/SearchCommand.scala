@@ -83,8 +83,6 @@ class SearchCommand[F[_]: Async](
     })
   }
 
-  private def truncate(str: String, maxLength: Int): String = {
-    if (str.length <= maxLength) str
-    else str.take(maxLength - 3) + "..."
-  }
+  private def truncate(str: String, maxLength: Int): String =
+    Option.when(str.length > maxLength)(str.take(maxLength - 3) + "...").getOrElse(str)
 }

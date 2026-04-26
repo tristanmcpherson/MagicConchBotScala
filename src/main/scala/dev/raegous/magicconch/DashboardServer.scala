@@ -20,30 +20,6 @@ import dev.raegous.magicconch.guilds.GuildTracker
 
 import scala.concurrent.duration.*
 
-/**
- * Web dashboard API server for monitoring and controlling the bot.
- *
- * This server provides REST API endpoints only.
- * The frontend is served separately by the React dev server (Vite).
- *
- * For development:
- *   - Backend API: http://localhost:8080
- *   - Frontend UI: http://localhost:3000 (run 'cd dashboard-ui && npm run dev')
- *
- * For production:
- *   - Build the React app: 'cd dashboard-ui && npm run build'
- *   - Serve the built files from another web server (nginx, etc.)
- *   - Or update this server to serve static files from dashboard-ui/dist
- *
- * API Endpoints:
- * - GET  /api/health              - Health check
- * - GET  /api/guilds              - List all guilds
- * - GET  /api/guilds/:id/queue    - Get guild queue
- * - GET  /api/guilds/:id/playback - Get playback state
- * - POST /api/guilds/:id/skip     - Skip current track
- * - POST /api/guilds/:id/stop     - Stop playback
- * - DELETE /api/guilds/:id/queue/:index - Remove track from queue
- */
 class DashboardServer[F[_]: Async](
   voiceManager: VoiceManager[F],
   guildTracker: GuildTracker[F],
@@ -101,7 +77,7 @@ class DashboardServer[F[_]: Async](
             GuildInfo(
               id = guild.id,
               name = guild.name,
-              queueSize = queue.tracks.length + (if (queue.currentTrack.isDefined) 1 else 0),
+              queueSize = queue.tracks.length + queue.currentTrack.fold(0)(_ => 1),
               isPlaying = queue.isPlaying
             )
           }
@@ -168,8 +144,8 @@ class DashboardServer[F[_]: Async](
       .withHttpApp(httpAppWithCors)
       .build
       .evalMap { server =>
-        Logger[F].info(s"🌐 Dashboard API server started at http://localhost:${server.address.getPort}") >>
-        Logger[F].info(s"📱 Frontend: Run 'cd dashboard-ui && npm run dev' to start the React UI at http://localhost:3000")
+        Logger[F].info(s"Dashboard API server started at http://localhost:${server.address.getPort}") >>
+        Logger[F].info(s"Frontend: Run 'cd dashboard-ui && npm run dev' to start the React UI at http://localhost:3000")
       }
       .void
   }

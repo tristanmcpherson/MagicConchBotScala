@@ -388,11 +388,11 @@ class VoiceManager[F[_]: Async: fs2.io.process.Processes] private (
   // Helper to start playback fiber and track it
   private def startPlaybackFiber(guildId: String, streamUrl: String, voiceWs: sttp.ws.WebSocket[F], startPosition: Int = 0): F[Unit] = {
     val playbackAction = {
-      val streamF = if (startPosition > 0) {
+      val streamF = Option.when(startPosition > 0)(
         voiceGateway.streamAudioFromPosition(streamUrl, voiceWs, startPosition, guildId)
-      } else {
+      ).getOrElse(
         voiceGateway.streamAudio(streamUrl, voiceWs, guildId)
-      }
+      )
 
       streamF.handleErrorWith { error =>
         Logger[F].error(s"[PLAYBACK] ✗ Failed to stream audio: ${error.getMessage}") >>

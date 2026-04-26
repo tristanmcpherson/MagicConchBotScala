@@ -83,12 +83,10 @@ class YtDlpExtractor[F[_]: Async: Processes](using Logger[F]) {
         for {
           output <- process.stdout.through(fs2.text.utf8.decode).compile.string
           exitCode <- process.exitValue
-          result <- if (exitCode == 0) {
-            Async[F].pure(Some(output))
-          } else {
+          result <- Option.when(exitCode == 0)(Async[F].pure(output.some)).getOrElse(
             Logger[F].error(s"Command failed with exit code $exitCode: ${command.mkString(" ")}") >>
-            Async[F].pure(None)
-          }
+            Async[F].pure(none[String])
+          )
         } yield result
       }
       .handleErrorWith { error =>

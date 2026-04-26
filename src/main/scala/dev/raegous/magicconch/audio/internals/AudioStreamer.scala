@@ -207,14 +207,12 @@ class AudioStreamer[F[_]: Async: Processes] private (
           val completeBytes = numCompleteFrames * frameSize
           val remainder = combined.drop(completeBytes)
           
-          if (numCompleteFrames > 0) {
+          Option.when(numCompleteFrames > 0) {
             val framesToEmit = (0 until numCompleteFrames).map { i =>
               combined.drop(i * frameSize).take(frameSize)
             }.toList
             (remainder, Some(framesToEmit))
-          } else {
-            (combined, None)
-          }
+          }.getOrElse((combined, None))
         }
       }.flatMap {
         case Some(frames) => Stream.emits(frames)
@@ -241,12 +239,9 @@ class AudioStreamer[F[_]: Async: Processes] private (
   ): fs2.Pipe[F, Array[Byte], Unit] = {
     _.zipWithIndex
       .evalMap { case (pcmData, frameIndex) =>
-        // Validate frame size
-        if (pcmData.length != PCM_FRAME_SIZE_BYTES) {
-          Logger[F].error(
-            s"[AUDIO] ✗ Invalid PCM frame size: ${pcmData.length} bytes (expected $PCM_FRAME_SIZE_BYTES)"
-          )
-        } else {
+        Option.when(pcmData.length != PCM_FRAME_SIZE_BYTES)(
+          Logger[F].error(s"[AUDIO] Invalid PCM frame size: ${pcmData.length} bytes (expected $PCM_FRAME_SIZE_BYTES)")
+        ).getOrElse {
           // Derive state from frame index (functional, no mutable state)
           val sequence = frameIndex.toInt
           val timestamp = frameIndex * OPUS_FRAME_SIZE
@@ -313,13 +308,7 @@ class AudioStreamer[F[_]: Async: Processes] private (
               opusOutput.length
             )
 
-            // Return only the actual encoded bytes (must copy since buffer goes back to pool)
-            if (encodedLength > 0) {
-              opusOutput.take(encodedLength)
-            } else {
-              // Encoding failed - this shouldn't happen with valid PCM input
-              Array.empty[Byte]
-            }
+            Option.when(encodedLength > 0)(opusOutput.take(encodedLength)).getOrElse(Array.empty[Byte])
           }
         }
       }.handleErrorWith { error =>

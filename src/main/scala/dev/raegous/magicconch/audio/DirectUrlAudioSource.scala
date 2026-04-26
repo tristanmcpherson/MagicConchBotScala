@@ -4,9 +4,6 @@ import cats.implicits.*
 import cats.effect.*
 import org.typelevel.log4cats.Logger
 
-/**
- * Audio source for direct URLs to audio files (MP3, WAV, OGG, etc.)
- */
 class DirectUrlAudioSource[F[_]: Async](using logger: Logger[F]) extends AudioSource[F] {
 
   private val audioExtensions = List(
@@ -20,35 +17,22 @@ class DirectUrlAudioSource[F[_]: Async](using logger: Logger[F]) extends AudioSo
     audioExtensions.exists(ext => lowerUrl.contains(ext))
   }
 
-  override def extractTrackInfo(url: String): F[Option[AudioTrackInfo]] = {
-    if (!canHandle(url)) {
-      Async[F].pure(None)
-    } else {
+  override def extractTrackInfo(url: String): F[Option[AudioTrackInfo]] =
+    Option.when(canHandle(url))(
       for {
         _ <- logger.info(s"[DirectUrlAudioSource] Extracting info for direct audio URL")
         filename = url.split("/").lastOption.getOrElse("Audio File")
         title = java.net.URLDecoder.decode(filename, "UTF-8")
-          .replaceAll("\\.[^.]+$", "") // Remove file extension
-        trackInfo = AudioTrackInfo(
-          url = url,
-          title = title,
-          duration = None,
-          source = "Direct URL"
-        )
+          .replaceAll("\\.[^.]+$", "")
+        trackInfo = AudioTrackInfo(url = url, title = title, duration = None, source = "Direct URL")
         _ <- logger.info(s"[DirectUrlAudioSource] Extracted: $title")
-      } yield Some(trackInfo)
-    }
-  }
+      } yield trackInfo.some
+    ).getOrElse(Async[F].pure(none[AudioTrackInfo]))
 
-  override def getStreamUrl(url: String): F[Option[String]] = {
+  override def getStreamUrl(url: String): F[Option[String]] =
     Option.when(canHandle(url))(url)
-      .traverse(url =>
-        logger.info(s"[DirectUrlAudioSource] Using direct URL for streaming").as(url)
-      )
-  }
+      .traverse(u => logger.info(s"[DirectUrlAudioSource] Using direct URL for streaming").as(u))
 
-  override def extractPlaylistUrls(url: String): F[List[String]] = {
-    // Direct URLs don't support playlists
+  override def extractPlaylistUrls(url: String): F[List[String]] =
     Async[F].pure(List.empty)
-  }
 }

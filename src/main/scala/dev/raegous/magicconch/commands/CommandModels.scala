@@ -80,11 +80,8 @@ trait Command[F[_]] {
       case _ =>
         // Multiple arguments - for now, just put everything in the first arg
         // Commands with complex parsing can override this
-        if (argsString.trim.nonEmpty) {
-          Map(arguments.head.name -> argsString.trim)
-        } else {
-          Map.empty
-        }
+        Option.when(argsString.trim.nonEmpty)(Map(arguments.head.name -> argsString.trim))
+          .getOrElse(Map.empty)
     }
   }
 }

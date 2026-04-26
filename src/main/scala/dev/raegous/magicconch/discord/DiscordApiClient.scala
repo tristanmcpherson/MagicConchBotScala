@@ -55,11 +55,11 @@ class DiscordApiClient[F[_]: Async](token: String, backend: WebSocketStreamBacke
     for {
       _ <- Logger[F].info(s"Sending rich message to channel $channelId with ${embeds.map(_.size).getOrElse(0)} embeds and ${components.map(_.size).getOrElse(0)} components")
       response <- request.send(backend)
-      _ <- if (response.code.isSuccess) {
+      _ <- Option.when(response.code.isSuccess)(
         Logger[F].info(s"Rich message sent to channel $channelId")
-      } else {
+      ).getOrElse(
         Logger[F].error(s"Failed to send rich message: ${response.code} - ${response.body}")
-      }
+      )
     } yield ()
   }
   
@@ -70,15 +70,15 @@ class DiscordApiClient[F[_]: Async](token: String, backend: WebSocketStreamBacke
       .header("Authorization", s"Bot $token")
       .multipartBody(
         multipart("file", audioBytes).fileName(filename).contentType("audio/ogg"),
-        multipart("payload_json", """{"content":"🎵 Audio response!"}""").contentType("application/json")
+        multipart("payload_json", """{"content":"Audio response!"}""").contentType("application/json")
       )
     
     request.send(backend).flatMap { response =>
-      if (response.code.isSuccess) {
+      Option.when(response.code.isSuccess)(
         Logger[F].info(s"Audio file sent to channel $channelId: $filename")
-      } else {
+      ).getOrElse(
         Logger[F].error(s"Failed to send audio file: ${response.code} - ${response.body}")
-      }
+      )
     }
   }
   
@@ -90,13 +90,13 @@ class DiscordApiClient[F[_]: Async](token: String, backend: WebSocketStreamBacke
       .body(commandData)
     
     request.send(backend).flatMap { response =>
-      if (response.code.isSuccess) {
-        Logger[F].debug(s"Slash command registered successfully: ${response.code}")
+      Option.when(response.code.isSuccess)(
+        Logger[F].debug(s"Slash command registered successfully: ${response.code}") >>
         Async[F].pure(response.body.toString)
-      } else {
-        Logger[F].error(s"Failed to register slash command: ${response.code} - ${response.body}")
+      ).getOrElse(
+        Logger[F].error(s"Failed to register slash command: ${response.code} - ${response.body}") >>
         Async[F].pure(s"Error: ${response.code}")
-      }
+      )
     }
   }
   
@@ -117,7 +117,7 @@ class DiscordApiClient[F[_]: Async](token: String, backend: WebSocketStreamBacke
             val retryAfter = response.header("Retry-After")
               .flatMap(_.toIntOption)
               .getOrElse(1)
-            Logger[F].warn(s"Rate limited, retrying after ${retryAfter} seconds") >>
+            Logger[F].warn(s"Rate limited, retrying after $retryAfter seconds") >>
             Async[F].sleep(scala.concurrent.duration.Duration(retryAfter, "seconds")) >>
             attemptRegistration()
           case _ =>
@@ -135,7 +135,7 @@ class DiscordApiClient[F[_]: Async](token: String, backend: WebSocketStreamBacke
       .get(uri"${DiscordApiClient.commandsUrl(applicationId)}")
       .header("Authorization", s"Bot $token")
 
-    var response = request.send(backend).map(a => a.body.toOption)
+    val response = request.send(backend).map(_.body.toOption)
     OptionT(response)
       .filter(_.nonEmpty)
       .semiflatTap(body => Logger[F].debug(s"Raw global commands response: $body"))
@@ -248,22 +248,15 @@ class DiscordApiClient[F[_]: Async](token: String, backend: WebSocketStreamBacke
       .header("Authorization", s"Bot $token")
     
     request.send(backend).flatMap { response =>
-      if (response.code.isSuccess) {
-        import io.circe.parser.*
-        decode[GuildMember](response.body.toString) match {
-          case Right(member) =>
-            // Note: Discord API doesn't include voice state in member object
-            // We need to track voice states from gateway events instead
-            Logger[F].info(s"Retrieved member info for user $userId")
-            Async[F].pure(None) // Will implement proper voice state tracking
-          case Left(error) =>
-            Logger[F].error(s"Failed to parse member info: $error")
-            Async[F].pure(None)
-        }
-      } else {
-        Logger[F].error(s"Failed to get member info: ${response.code} - ${response.body}")
-        Async[F].pure(None)
-      }
+      import io.circe.parser.*
+      Option.when(response.code.isSuccess)(
+        decode[GuildMember](response.body.toString).fold(
+          error => Logger[F].error(s"Failed to parse member info: $error") >> Async[F].pure(none[String]),
+          _ => Logger[F].info(s"Retrieved member info for user $userId") >> Async[F].pure(none[String])
+        )
+      ).getOrElse(
+        Logger[F].error(s"Failed to get member info: ${response.code} - ${response.body}") >> Async[F].pure(none[String])
+      )
     }
   }
   
@@ -275,11 +268,11 @@ class DiscordApiClient[F[_]: Async](token: String, backend: WebSocketStreamBacke
 
     for {
       httpResponse <- request.send(backend)
-      _ <- if (httpResponse.code.isSuccess) {
+      _ <- Option.when(httpResponse.code.isSuccess)(
         Logger[F].info(s"Interaction response sent successfully: ${httpResponse.code}")
-      } else {
+      ).getOrElse(
         Logger[F].error(s"Failed to send interaction response: ${httpResponse.code} - ${httpResponse.body}")
-      }
+      )
     } yield ()
   }
 
@@ -312,11 +305,11 @@ class DiscordApiClient[F[_]: Async](token: String, backend: WebSocketStreamBacke
     for {
       _ <- Logger[F].info(s"Editing interaction response with content: $content")
       httpResponse <- request.send(backend)
-      _ <- if (httpResponse.code.isSuccess) {
+      _ <- Option.when(httpResponse.code.isSuccess)(
         Logger[F].info(s"Interaction edit successful: ${httpResponse.code}")
-      } else {
+      ).getOrElse(
         Logger[F].error(s"Failed to edit interaction: ${httpResponse.code} - ${httpResponse.body}")
-      }
+      )
     } yield ()
   }
 }

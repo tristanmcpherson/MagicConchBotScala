@@ -6,16 +6,6 @@ import cats.implicits.*
 import org.typelevel.log4cats.Logger
 import dev.raegous.magicconch.audio.internals.*
 
-/**
- * Controls music playback for guilds
- *
- * Responsibilities:
- * - Start/stop playback
- * - Pause/resume playback
- * - Skip tracks
- * - Seek within tracks
- * - Manage playback fibers
- */
 class PlaybackController[F[_]: Async](
   private val queueManager: QueueManager[F],
   private val trackExtractor: TrackExtractor[F],
@@ -25,147 +15,109 @@ class PlaybackController[F[_]: Async](
   private val gatewayWebSocketRef: Ref[F, Option[sttp.ws.WebSocket[F]]]
 )(using Logger[F]) {
 
-  /**
-   * Start playing the current track in the queue
-   */
-  def startPlayingCurrent(guildId: String): F[Unit] = {
+  def startPlayingCurrent(guildId: String): F[Unit] =
     Logger[F].debug(s"[PLAYBACK] Starting playback for guild $guildId") >>
     queueManager.getQueue(guildId).flatMap { queue =>
       queue.currentTrack.fold(
         Logger[F].warn(s"[PLAYBACK] No current track to play - queue might be empty")
       ) { track =>
         Logger[F].info(s"[PLAYBACK] Playing: ${track.title}") >>
-        trackExtractor.getStreamUrl(track.url).flatMap {
-          case None =>
+        trackExtractor.getStreamUrl(track.url).flatMap(
+          _.fold(
             Logger[F].error(s"[PLAYBACK] Failed to extract stream URL") >>
             queueManager.setCurrentTrack(guildId, None)
-          case Some(streamUrl) =>
-            activeVoiceConnections.get.flatMap { connections =>
-              connections.get(guildId).fold(
+          ) { streamUrl =>
+            activeVoiceConnections.get.flatMap(
+              _.get(guildId).fold(
                 Logger[F].error(s"[PLAYBACK] No active voice connection for guild $guildId")
-              ) { voiceWs =>
-                startPlaybackFiber(guildId, streamUrl, voiceWs, startPosition = 0)
-              }
-            }
-        }
+              )(startPlaybackFiber(guildId, streamUrl, _, startPosition = 0))
+            )
+          }
+        )
       }
     }
-  }
 
-  /**
-   * Start playing from a specific position (for seek/resume)
-   */
-  def startPlayingCurrentWithPosition(guildId: String, startPosition: Int): F[Unit] = {
+  def startPlayingCurrentWithPosition(guildId: String, startPosition: Int): F[Unit] =
     queueManager.getQueue(guildId).flatMap { queue =>
       queue.currentTrack.fold(
         Logger[F].warn(s"[PLAYBACK] No current track to resume")
       ) { track =>
-        trackExtractor.getStreamUrl(track.url).flatMap {
-          case None =>
+        trackExtractor.getStreamUrl(track.url).flatMap(
+          _.fold(
             Logger[F].error(s"[PLAYBACK] Failed to extract stream URL for resume") >>
             queueManager.setCurrentTrack(guildId, None)
-          case Some(streamUrl) =>
-            activeVoiceConnections.get.flatMap { connections =>
-              connections.get(guildId).fold(
+          ) { streamUrl =>
+            activeVoiceConnections.get.flatMap(
+              _.get(guildId).fold(
                 Logger[F].error(s"[PLAYBACK] No active voice connection")
-              ) { voiceWs =>
-                startPlaybackFiber(guildId, streamUrl, voiceWs, startPosition)
-              }
-            }
-        }
-      }
-    }
-  }
-
-  /**
-   * Pause playback
-   */
-  def pausePlayback(guildId: String): F[Unit] = {
-    queueManager.getQueue(guildId).flatMap { queue =>
-      queue.currentTrack match {
-        case Some(track) if !queue.isPaused =>
-          for {
-            currentPos <- queueManager.getCurrentPosition(guildId)
-            _ <- Logger[F].info(s"[PAUSE] Pausing ${track.title} at ${currentPos}s")
-            _ <- stopMusic(guildId)
-            _ <- queueManager.updatePlaybackState(
-              guildId,
-              isPlaying = false,
-              isPaused = true,
-              currentPosition = currentPos,
-              pauseTime = Some(System.currentTimeMillis())
+              )(startPlaybackFiber(guildId, streamUrl, _, startPosition))
             )
-          } yield ()
-        case _ => Async[F].unit
+          }
+        )
       }
     }
-  }
 
-  /**
-   * Resume playback
-   */
-  def resumePlayback(guildId: String): F[Unit] = {
+  def pausePlayback(guildId: String): F[Unit] =
     queueManager.getQueue(guildId).flatMap { queue =>
-      queue.currentTrack match {
-        case Some(track) if queue.isPaused =>
-          Logger[F].info(s"[RESUME] Resuming ${track.title} from ${queue.currentPosition}s") >>
-          queueManager.updatePlaybackState(
+      queue.currentTrack.filter(_ => !queue.isPaused).fold(Async[F].unit) { track =>
+        for {
+          currentPos <- queueManager.getCurrentPosition(guildId)
+          _ <- Logger[F].info(s"[PAUSE] Pausing ${track.title} at ${currentPos}s")
+          _ <- stopMusic(guildId)
+          _ <- queueManager.updatePlaybackState(
             guildId,
-            isPlaying = true,
-            isPaused = false,
-            startTime = Some(System.currentTimeMillis())
-          ) >>
-          startPlayingCurrentWithPosition(guildId, queue.currentPosition)
-        case _ => Async[F].unit
+            isPlaying = false,
+            isPaused = true,
+            currentPosition = currentPos,
+            pauseTime = Some(System.currentTimeMillis())
+          )
+        } yield ()
       }
     }
-  }
 
-  /**
-   * Skip to the next track
-   */
-  def skipTrack(guildId: String): F[Unit] = {
+  def resumePlayback(guildId: String): F[Unit] =
+    queueManager.getQueue(guildId).flatMap { queue =>
+      queue.currentTrack.filter(_ => queue.isPaused).fold(Async[F].unit) { track =>
+        Logger[F].info(s"[RESUME] Resuming ${track.title} from ${queue.currentPosition}s") >>
+        queueManager.updatePlaybackState(
+          guildId,
+          isPlaying = true,
+          isPaused = false,
+          startTime = Some(System.currentTimeMillis())
+        ) >>
+        startPlayingCurrentWithPosition(guildId, queue.currentPosition)
+      }
+    }
+
+  def skipTrack(guildId: String): F[Unit] =
     Logger[F].info(s"[SKIP] Skipping current track") >>
     stopMusic(guildId) >>
     playNextTrack(guildId)
-  }
 
-  /**
-   * Stop playback and clear queue
-   */
-  def stopPlayback(guildId: String): F[Unit] = {
+  def stopPlayback(guildId: String): F[Unit] =
     Logger[F].info(s"[STOP] Stopping playback and clearing queue") >>
     stopMusic(guildId) >>
     queueManager.clearQueue(guildId)
-  }
 
-  /**
-   * Seek to a position in the current track
-   */
-  def seek(guildId: String, position: Int): F[Unit] = {
+  def seek(guildId: String, position: Int): F[Unit] =
     queueManager.getQueue(guildId).flatMap { queue =>
-      queue.currentTrack match {
-        case Some(track) =>
-          Logger[F].info(s"[SEEK] Seeking to ${position}s in ${track.title}") >>
-          stopMusic(guildId) >>
-          queueManager.updatePlaybackState(
-            guildId,
-            isPlaying = true,
-            isPaused = false,
-            currentPosition = position,
-            startTime = Some(System.currentTimeMillis())
-          ) >>
-          startPlayingCurrentWithPosition(guildId, position)
-        case None =>
-          Logger[F].warn(s"[SEEK] No track currently playing")
+      queue.currentTrack.fold(
+        Logger[F].warn(s"[SEEK] No track currently playing")
+      ) { track =>
+        Logger[F].info(s"[SEEK] Seeking to ${position}s in ${track.title}") >>
+        stopMusic(guildId) >>
+        queueManager.updatePlaybackState(
+          guildId,
+          isPlaying = true,
+          isPaused = false,
+          currentPosition = position,
+          startTime = Some(System.currentTimeMillis())
+        ) >>
+        startPlayingCurrentWithPosition(guildId, position)
       }
     }
-  }
 
-  /**
-   * Play the next track from queue
-   */
-  def playNextTrack(guildId: String): F[Unit] = {
+  def playNextTrack(guildId: String): F[Unit] =
     Logger[F].info(s"[PLAYBACK] playNextTrack called") >>
     queueManager.playNext(guildId).flatMap(
       _.fold(
@@ -175,12 +127,8 @@ class PlaybackController[F[_]: Async](
         startPlayingCurrent(guildId)
       }
     )
-  }
 
-  /**
-   * Stop the music playback fiber
-   */
-  def stopMusic(guildId: String): F[Unit] = {
+  def stopMusic(guildId: String): F[Unit] =
     activePlaybackFibers.get.flatMap { fibers =>
       fibers.get(guildId).fold(
         Logger[F].debug(s"[STOP] No active playback fiber for guild $guildId")
@@ -190,27 +138,21 @@ class PlaybackController[F[_]: Async](
         activePlaybackFibers.update(_ - guildId)
       }
     }
-  }
 
-  // Private helper to start a playback fiber
   private def startPlaybackFiber(guildId: String, streamUrl: String, voiceWs: sttp.ws.WebSocket[F], startPosition: Int): F[Unit] = {
-    val playbackAction = {
-      val streamF = if (startPosition > 0) {
-        voiceGateway.streamAudioFromPosition(streamUrl, voiceWs, startPosition, guildId)
-      } else {
-        voiceGateway.streamAudio(streamUrl, voiceWs, guildId)
-      }
+    val streamF = Option.when(startPosition > 0)(
+      voiceGateway.streamAudioFromPosition(streamUrl, voiceWs, startPosition, guildId)
+    ).getOrElse(
+      voiceGateway.streamAudio(streamUrl, voiceWs, guildId)
+    )
 
-      streamF.handleErrorWith { error =>
-        Logger[F].error(s"[PLAYBACK] Failed to stream audio: ${error.getMessage}") >>
-        queueManager.setCurrentTrack(guildId, None)
-      } >>
-      Logger[F].info(s"[PLAYBACK] Finished playing") >>
-      // After track finishes, play next or leave
-      playNextTrackOrLeave(guildId)
-    }
+    val playbackAction = streamF.handleErrorWith { error =>
+      Logger[F].error(s"[PLAYBACK] Failed to stream audio: ${error.getMessage}") >>
+      queueManager.setCurrentTrack(guildId, None)
+    } >>
+    Logger[F].info(s"[PLAYBACK] Finished playing") >>
+    playNextTrackOrLeave(guildId)
 
-    // Update queue state to playing
     queueManager.updatePlaybackState(
       guildId,
       isPlaying = true,
@@ -223,27 +165,20 @@ class PlaybackController[F[_]: Async](
     }
   }
 
-  // Private helper to play next track or leave voice channel
-  private def playNextTrackOrLeave(guildId: String): F[Unit] = {
+  private def playNextTrackOrLeave(guildId: String): F[Unit] =
     queueManager.getQueue(guildId).flatMap { queue =>
-      if (queue.tracks.nonEmpty) {
-        // More tracks in queue, play next
-        playNextTrack(guildId)
-      } else {
-        // Queue is empty, leave voice channel
+      Option.when(queue.tracks.nonEmpty)(playNextTrack(guildId)).getOrElse(
         Logger[F].info(s"[PLAYBACK] Queue empty, leaving voice channel") >>
         gatewayWebSocketRef.get.flatMap(
           _.fold(
             Logger[F].warn(s"[PLAYBACK] No gateway WebSocket available")
-          ) { gatewayWs =>
-            // VoiceManager will handle the actual leave logic
+          ) { _ =>
             activeVoiceConnections.update(_ - guildId) >>
             activePlaybackFibers.update(_ - guildId)
           }
         )
-      }
+      )
     }
-  }
 }
 
 object PlaybackController {
@@ -254,7 +189,7 @@ object PlaybackController {
     activePlaybackFibers: Ref[F, Map[String, Fiber[F, Throwable, Unit]]],
     activeVoiceConnections: Ref[F, Map[String, sttp.ws.WebSocket[F]]],
     gatewayWebSocketRef: Ref[F, Option[sttp.ws.WebSocket[F]]]
-  )(using Logger[F]): PlaybackController[F] = {
+  )(using Logger[F]): PlaybackController[F] =
     new PlaybackController[F](
       queueManager,
       trackExtractor,
@@ -263,5 +198,4 @@ object PlaybackController {
       activeVoiceConnections,
       gatewayWebSocketRef
     )
-  }
 }

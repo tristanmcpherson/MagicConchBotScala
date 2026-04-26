@@ -31,46 +31,38 @@ object MagicConchBot extends IOApp {
   }
 
   def run(args: List[String]): IO[ExitCode] = {
-    val token = sys.env.get("DISCORD_TOKEN") match {
-      case Some(t) => t
-      case None => 
-        println("DISCORD_TOKEN environment variable not set!")
-        return IO.pure(ExitCode.Error)
-    }
+    val envVars = for {
+      token <- sys.env.get("DISCORD_TOKEN").toRight("DISCORD_TOKEN environment variable not set!")
+      applicationId <- sys.env.get("DISCORD_APP_ID").toRight("DISCORD_APP_ID environment variable not set!")
+    } yield (token, applicationId)
 
-    val applicationId = sys.env.get("DISCORD_APP_ID") match {
-      case Some(t) => t
-      case None =>
-        println("DISCORD_APP_ID environment variable not set!")
-        return IO.pure(ExitCode.Error)
-    }
+    envVars.fold(
+      error => Logger[IO].error(error).as(ExitCode.Error),
+      { case (token, applicationId) =>
+        val youtubeApiKey = sys.env.getOrElse("YOUTUBE_API_KEY", {
+          println("Warning: YOUTUBE_API_KEY environment variable not set! Search command will be disabled.")
+          ""
+        })
 
-    val youtubeApiKey = sys.env.get("YOUTUBE_API_KEY") match {
-      case Some(t) => t
-      case None =>
-        println("Warning: YOUTUBE_API_KEY environment variable not set! Search command will be disabled.")
-        ""
-    }
+        (
+          HttpClientFs2Backend.resource[IO](),
+          EmberClientBuilder.default[IO].build
+        ).tupled.flatMap { case (backend, httpClient) =>
+          DiscordClient.make[IO](token, applicationId, youtubeApiKey, backend, httpClient)
+        }.use { client =>
+          val dashboardPort = sys.env.get("DASHBOARD_PORT").flatMap(_.toIntOption).getOrElse(9090)
+          val dashboardServer = new DashboardServer[IO](client.voiceManager, client.guildTracker, dashboardPort)
 
-    (
-      HttpClientFs2Backend.resource[IO](),
-      EmberClientBuilder.default[IO].build
-    ).tupled.flatMap { case (backend, httpClient) =>
-      DiscordClient.make[IO](token, applicationId, youtubeApiKey, backend, httpClient)
-    }.use { client =>
-      val dashboardPort = sys.env.get("DASHBOARD_PORT").flatMap(_.toIntOption).getOrElse(9090)
-      val dashboardServer = new DashboardServer[IO](client.voiceManager, client.guildTracker, dashboardPort)
-
-      for {
-        _ <- Logger[IO].info("Starting Magic Conch Bot...")
-        _ <- Logger[IO].info(s"Dashboard will be available at http://localhost:$dashboardPort")
-
-        // Start both Discord client and dashboard server concurrently
-        _ <- (
-          dashboardServer.start.use(_ => IO.never), // Keep dashboard running
-          connectWithRetry(client)                   // Keep Discord client running with auto-reconnect
-        ).parTupled
-      } yield ExitCode.Success
-    }
+          for {
+            _ <- Logger[IO].info("Starting Magic Conch Bot...")
+            _ <- Logger[IO].info(s"Dashboard will be available at http://localhost:$dashboardPort")
+            _ <- (
+              dashboardServer.start.use(_ => IO.never),
+              connectWithRetry(client)
+            ).parTupled
+          } yield ExitCode.Success
+        }
+      }
+    )
   }
 }

@@ -12,15 +12,6 @@ import io.circe.Printer
 import io.circe.syntax.*
 import sttp.ws.WebSocket
 
-/**
- * Handles player control interactions (pause/resume, stop, skip, volume)
- *
- * This handler processes button interactions from the music player interface:
- * - Pause/Resume: Toggle playback state
- * - Stop: Stop playback and clear queue
- * - Skip: Skip to next track
- * - Volume: Adjust playback volume
- */
 class PlayerInteractionHandler[F[_]: Async](
   voiceManager: VoiceManager[F],
   discordApi: DiscordApiClient[F],
@@ -140,7 +131,7 @@ class PlayerInteractionHandler[F[_]: Async](
     val response = InteractionResponse(
       `type` = 7, // UPDATE_MESSAGE
       data = Some(InteractionResponseData(
-        content = Some(if (isPaused) "Playback paused" else "Playback resumed"),
+        content = Some(Option.when(isPaused)("Playback paused").getOrElse("Playback resumed")),
         components = updatePauseResumeButtons(interaction, guildId, isPaused)
       ))
     )
@@ -151,13 +142,13 @@ class PlayerInteractionHandler[F[_]: Async](
     interaction.message.flatMap(_.components).map { components =>
       components.map { row =>
         row.copy(components = row.components.map(_.map { button =>
-          if (button.custom_id.exists(id => id.startsWith("player_pause_") || id.startsWith("player_resume_"))) {
+          Option.when(button.custom_id.exists(id => id.startsWith("player_pause_") || id.startsWith("player_resume_")))(
             button.copy(
-              label = Some(if (isPaused) "Resume" else "Pause"),
-              custom_id = Some(s"player_${if (isPaused) "resume" else "pause"}_$guildId"),
-              style = Some(if (isPaused) 3 else 1) // 3=Success (green), 1=Primary (blue)
+              label = Some(Option.when(isPaused)("Resume").getOrElse("Pause")),
+              custom_id = Some(s"player_${Option.when(isPaused)("resume").getOrElse("pause")}_$guildId"),
+              style = Some(Option.when(isPaused)(3).getOrElse(1))
             )
-          } else button
+          ).getOrElse(button)
         }))
       }
     }
@@ -203,11 +194,8 @@ class PlayerInteractionHandler[F[_]: Async](
         response = InteractionResponse(
           `type` = 7, // UPDATE_MESSAGE
           data = Some(InteractionResponseData(
-            content = Some(newQueue.currentTrack match {
-              case Some(track) => s"Skipped! Now playing: **${track.title}**"
-              case None => "Skipped! Queue is now empty"
-            }),
-            components = if (newQueue.currentTrack.isDefined) interaction.message.flatMap(_.components) else Some(List.empty)
+            content = Some(newQueue.currentTrack.fold("Skipped! Queue is now empty")(track => s"Skipped! Now playing: **${track.title}**")),
+            components = newQueue.currentTrack.fold(Some(List.empty[MessageComponent]))(_ => interaction.message.flatMap(_.components))
           ))
         )
         _ <- discordApi.sendInteractionResponse(interaction.id, interaction.token, response.asJson.printWith(jsonPrinter))
