@@ -14,6 +14,14 @@ import sttp.ws.WebSocket
 
 import scala.concurrent.duration.*
 
+private case class PendingVoiceConnection(
+  sessionId: Option[String] = None,
+  token: Option[String] = None,
+  endpoint: Option[String] = None,
+  channelId: Option[String] = None,
+  connecting: Boolean = false
+)
+
 object VoiceManager {
   def make[F[_]: Async: fs2.io.process.Processes](
     initialBotUserId: String,
@@ -36,7 +44,7 @@ object VoiceManager {
           searchResultsRef <- Ref.of[F, Map[String, List[YouTubeSearchResult]]](Map.empty)
           activeVoiceConnections <- Ref.of[F, Map[String, sttp.ws.WebSocket[F]]](Map.empty)
           gatewayWebSocketRef <- Ref.of[F, Option[sttp.ws.WebSocket[F]]](None)
-          pendingVoiceConnections <- Ref.of[F, Map[String, (Option[String], Option[String], Option[String])]](Map.empty)
+          pendingVoiceConnections <- Ref.of[F, Map[String, PendingVoiceConnection]](Map.empty)
           pendingConnectionPromises <- Ref.of[F, Map[String, Deferred[F, Either[VoiceError, Unit]]]](Map.empty)
           activePlaybackFibers <- Ref.of[F, Map[String, Fiber[F, Throwable, Unit]]](Map.empty)
         } yield new VoiceManager[F](
@@ -67,13 +75,15 @@ class VoiceManager[F[_]: Async: fs2.io.process.Processes] private (
   private val searchResultsRef: Ref[F, Map[String, List[YouTubeSearchResult]]],
   private val activeVoiceConnections: Ref[F, Map[String, sttp.ws.WebSocket[F]]],
   private val gatewayWebSocketRef: Ref[F, Option[sttp.ws.WebSocket[F]]],
-  private val pendingVoiceConnections: Ref[F, Map[String, (Option[String], Option[String], Option[String])]],
+  private val pendingVoiceConnections: Ref[F, Map[String, PendingVoiceConnection]],
   private val pendingConnectionPromises: Ref[F, Map[String, Deferred[F, Either[VoiceError, Unit]]]],
   private val activePlaybackFibers: Ref[F, Map[String, Fiber[F, Throwable, Unit]]],
   backend: sttp.client4.WebSocketStreamBackend[F, ?],
   audioStreamer: AudioStreamer[F],
   voiceGateway: VoiceGateway[F]
 )(using logger: Logger[F]) {
+
+  private val connectingVoiceConnectionGuilds = java.util.concurrent.ConcurrentHashMap.newKeySet[String]()
 
   // Maximum queue size per guild to prevent memory exhaustion
   private val MAX_QUEUE_SIZE = 500
@@ -105,8 +115,8 @@ class VoiceManager[F[_]: Async: fs2.io.process.Processes] private (
             // Bot joined/moved to voice channel - attempt connection
             _ => Logger[F].debug(s"[VOICE] Bot state updated: session=${voiceState.session_id}, channel=${voiceState.channel_id}") >>
               pendingVoiceConnections.update { pending =>
-                val (_, token, endpoint) = pending.getOrElse(guildId, (None, None, None))
-                pending + (guildId -> (Some(voiceState.session_id), token, endpoint))
+                val current = pending.getOrElse(guildId, PendingVoiceConnection())
+                pending + (guildId -> current.copy(sessionId = Some(voiceState.session_id), channelId = voiceState.channel_id))
               } >>
               attemptVoiceConnection(guildId)
           )
@@ -121,8 +131,8 @@ class VoiceManager[F[_]: Async: fs2.io.process.Processes] private (
     Logger[F].debug(s"[VOICE] Server update: guild=${voiceServer.guild_id}, endpoint=${voiceServer.endpoint}") >>
     // Update pending connection with token and endpoint
     pendingVoiceConnections.update { pending =>
-      val (sessionId, _, _) = pending.getOrElse(voiceServer.guild_id, (None, None, None))
-      pending + (voiceServer.guild_id -> (sessionId, Some(voiceServer.token), voiceServer.endpoint))
+      val current = pending.getOrElse(voiceServer.guild_id, PendingVoiceConnection())
+      pending + (voiceServer.guild_id -> current.copy(token = Some(voiceServer.token), endpoint = voiceServer.endpoint))
     } >>
     // Try to complete the connection
     attemptVoiceConnection(voiceServer.guild_id)
@@ -133,10 +143,17 @@ class VoiceManager[F[_]: Async: fs2.io.process.Processes] private (
       pending.get(guildId).fold(
         Logger[F].debug(s"[VOICE] No pending voice connection for guild $guildId")
       ) {
-        case (Some(sessionId), Some(token), Some(endpoint)) =>
-          Logger[F].info(s"[VOICE] All voice connection data received for guild $guildId, connecting...") >>
-          botUserIdRef.get.flatMap { botUserId =>
-            voiceGateway.connectToVoiceGateway(endpoint, guildId, botUserId, sessionId, token)
+        case PendingVoiceConnection(Some(sessionId), Some(token), Some(endpoint), Some(channelId), false) =>
+          Async[F].delay(connectingVoiceConnectionGuilds.add(guildId)).flatMap {
+            case false =>
+              Logger[F].debug(s"[VOICE] Voice connection attempt already in progress for guild $guildId")
+            case true =>
+              (pendingVoiceConnections.update { pending =>
+                pending.get(guildId).fold(pending)(current => pending + (guildId -> current.copy(connecting = true)))
+              } >>
+              Logger[F].info(s"[VOICE] All voice connection data received for guild $guildId, connecting...") >>
+              botUserIdRef.get.flatMap { botUserId =>
+                voiceGateway.connectToVoiceGateway(endpoint, guildId, botUserId, sessionId, token, channelId)
               .flatMap { voiceWs =>
                 Logger[F].info(s"[VOICE] Voice WebSocket obtained, storing in activeVoiceConnections for guild $guildId") >>
                 activeVoiceConnections.update(_ + (guildId -> voiceWs)) >>
@@ -155,19 +172,24 @@ class VoiceManager[F[_]: Async: fs2.io.process.Processes] private (
                 Logger[F].info(s"[VOICE] ✓ Successfully stored voice connection for guild $guildId")
               }
               .handleErrorWith { error =>
-                Logger[F].error(s"[VOICE] ✗ Failed to connect to voice gateway: ${error.getMessage}") >>
+                val msg = Option(error.getMessage).getOrElse(error.getClass.getSimpleName)
+                Logger[F].error(s"[VOICE] Failed to connect to voice gateway: $msg") >>
                 Logger[F].error(s"[VOICE] Stack trace: ${error.getStackTrace.take(5).mkString("\n")}") >>
                 pendingVoiceConnections.update(_ - guildId) >>
+                gatewayWebSocketRef.get.flatMap(_.fold(Async[F].unit)(ws => leaveVoiceChannel(guildId, ws))) >>
                 pendingConnectionPromises.get.flatMap { promises =>
                   promises.get(guildId).traverse_ { deferred =>
-                    val voiceError = VoiceConnectionFailed(guildId, error.getMessage)
+                    val voiceError = VoiceConnectionFailed(guildId, msg)
                     deferred.complete(Left(voiceError)).void
                   }
                 }
               }
+          }).guarantee(Async[F].delay(connectingVoiceConnectionGuilds.remove(guildId)).void)
           }
-        case (sessionId, token, endpoint) =>
-          Logger[F].info(s"[VOICE] Waiting for more voice connection data for guild $guildId (sessionId: ${sessionId.isDefined}, token: ${token.isDefined}, endpoint: ${endpoint.isDefined})")
+        case PendingVoiceConnection(Some(_), Some(_), Some(_), Some(_), true) =>
+          Logger[F].debug(s"[VOICE] Voice connection attempt already in progress for guild $guildId")
+        case pendingConnection =>
+          Logger[F].info(s"[VOICE] Waiting for more voice connection data for guild $guildId (sessionId: ${pendingConnection.sessionId.nonEmpty}, token: ${pendingConnection.token.nonEmpty}, endpoint: ${pendingConnection.endpoint.nonEmpty}, channelId: ${pendingConnection.channelId.nonEmpty}, connecting: ${pendingConnection.connecting})")
       }
     }
   }
@@ -318,7 +340,28 @@ class VoiceManager[F[_]: Async: fs2.io.process.Processes] private (
       _ <- Logger[F].info(s"[STOP] ✓ Stopped music and disconnected from voice channel")
     } yield ()
   }
-  
+
+  def abortActiveVoiceSessions(reason: String): F[Unit] = {
+    for {
+      _ <- Logger[F].warn(s"[VOICE] Aborting active voice sessions: $reason")
+      fibers <- activePlaybackFibers.getAndSet(Map.empty)
+      _ <- fibers.toList.traverse_ { case (guildId, fiber) =>
+        Logger[F].info(s"[VOICE] Canceling active playback for guild $guildId due to gateway reconnect") >>
+          fiber.cancel
+      }
+      promises <- pendingConnectionPromises.getAndSet(Map.empty)
+      _ <- promises.toList.traverse_ { case (guildId, deferred) =>
+        deferred.complete(Left(VoiceConnectionFailed(guildId, reason))).void
+      }
+      _ <- activeVoiceConnections.set(Map.empty)
+      _ <- pendingVoiceConnections.set(Map.empty)
+      _ <- Async[F].delay(connectingVoiceConnectionGuilds.clear())
+      _ <- musicQueueRef.update(_.view.mapValues(_.copy(isPlaying = false, currentTrack = None)).toMap)
+      _ <- voiceStateRef.set(None)
+      _ <- voiceGateway.closeVoiceConnection(s"main gateway abort: $reason").attempt.void
+    } yield ()
+  }
+   
   def clearQueue(guildId: String): F[Unit] = {
     musicQueueRef.update { queues =>
       queues + (guildId -> MusicQueue(List.empty, None, false))
@@ -340,7 +383,7 @@ class VoiceManager[F[_]: Async: fs2.io.process.Processes] private (
     sessionId: String
   ): F[Unit] = {
     botUserIdRef.get.flatMap { botUserId =>
-      voiceGateway.connectToVoiceGateway(endpoint, guildId, botUserId, sessionId, voiceToken)
+      voiceGateway.connectToVoiceGateway(endpoint, guildId, botUserId, sessionId, voiceToken, guildId)
         .flatMap { voiceWs =>
           activeVoiceConnections.update(_ + (guildId -> voiceWs)) >>
           Logger[F].info(s"Connected to voice channel in guild $guildId")

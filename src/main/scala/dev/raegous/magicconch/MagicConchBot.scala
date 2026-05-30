@@ -56,10 +56,11 @@ object MagicConchBot extends IOApp {
           for {
             _ <- Logger[IO].info("Starting Magic Conch Bot...")
             _ <- Logger[IO].info(s"Dashboard will be available at http://localhost:$dashboardPort")
-            _ <- (
-              dashboardServer.start.use(_ => IO.never),
-              connectWithRetry(client)
-            ).parTupled
+            _ <- dashboardServer.start.use(_ => connectWithRetry(client)).guaranteeCase {
+              case Outcome.Succeeded(_) => Logger[IO].info("Magic Conch Bot stopped cleanly.")
+              case Outcome.Errored(error) => Logger[IO].error(error)("Magic Conch Bot stopped with an error.")
+              case Outcome.Canceled() => Logger[IO].info("Magic Conch Bot stopped.")
+            }
           } yield ExitCode.Success
         }
       }

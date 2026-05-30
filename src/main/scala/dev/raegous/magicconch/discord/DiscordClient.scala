@@ -36,40 +36,38 @@ object DiscordClient {
     backend: WebSocketStreamBackend[F, ?],
     httpClient: org.http4s.client.Client[F]
   )(using Logger[F]): Resource[F, DiscordClient[F]] = {
-    Resource.eval {
-      for {
-        heartbeatFiber <- Ref.of[F, Option[Fiber[F, Throwable, Unit]]](None)
-        lastHeartbeatAck <- Ref.of[F, Option[Long]](Some(System.currentTimeMillis()))
-        lastSeqRef <- Ref.of[F, Option[Int]](None)
-        guildSettings <- GuildSettingsManager.make[F].allocated.map(_._1)
-        voiceManager <- VoiceManager.make[F](applicationId, backend, guildSettings).allocated.map(_._1)
-        guildTracker <- GuildTracker.make[F].allocated.map(_._1)
-        discordApi = new DiscordApiClient[F](token, backend)
-        youtubeSearch = new YouTubeSearchClient[F](youtubeApiKey, httpClient)
-        trackExtractor = dev.raegous.magicconch.music.TrackExtractor.make[F]
-        commandRegistry = new commands.CommandRegistry[F](voiceManager, trackExtractor, youtubeSearch, guildSettings, discordApi, applicationId)
-        messageHandler = new MessageHandler[F](discordApi, commandRegistry)
-        slashCommandManager = new SlashCommandManager[F](token, applicationId, discordApi, commandRegistry)
-        eventHandler <- GatewayEventHandler.make[F](token, applicationId, messageHandler, voiceManager, trackExtractor, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry).allocated.map(_._1)
-      } yield new DiscordClient[F](
-        token,
-        applicationId,
-        youtubeApiKey,
-        backend,
-        httpClient,
-        voiceManager,
-        guildTracker,
-        discordApi,
-        youtubeSearch,
-        commandRegistry,
-        messageHandler,
-        slashCommandManager,
-        eventHandler,
-        heartbeatFiber,
-        lastHeartbeatAck,
-        lastSeqRef
-      )
-    }
+    for {
+      heartbeatFiber <- Resource.eval(Ref.of[F, Option[Fiber[F, Throwable, Unit]]](None))
+      lastHeartbeatAck <- Resource.eval(Ref.of[F, Option[Long]](Some(System.currentTimeMillis())))
+      lastSeqRef <- Resource.eval(Ref.of[F, Option[Int]](None))
+      guildSettings <- GuildSettingsManager.make[F]
+      voiceManager <- VoiceManager.make[F](applicationId, backend, guildSettings)
+      guildTracker <- GuildTracker.make[F]
+      discordApi = new DiscordApiClient[F](token, backend)
+      youtubeSearch = new YouTubeSearchClient[F](youtubeApiKey, httpClient)
+      trackExtractor = dev.raegous.magicconch.music.TrackExtractor.make[F]
+      commandRegistry = new commands.CommandRegistry[F](voiceManager, trackExtractor, youtubeSearch, guildSettings, discordApi, applicationId)
+      messageHandler = new MessageHandler[F](discordApi, commandRegistry)
+      slashCommandManager = new SlashCommandManager[F](token, applicationId, discordApi, commandRegistry)
+      eventHandler <- GatewayEventHandler.make[F](token, applicationId, messageHandler, voiceManager, trackExtractor, slashCommandManager, discordApi, guildTracker, guildSettings, commandRegistry)
+    } yield new DiscordClient[F](
+      token,
+      applicationId,
+      youtubeApiKey,
+      backend,
+      httpClient,
+      voiceManager,
+      guildTracker,
+      discordApi,
+      youtubeSearch,
+      commandRegistry,
+      messageHandler,
+      slashCommandManager,
+      eventHandler,
+      heartbeatFiber,
+      lastHeartbeatAck,
+      lastSeqRef
+    )
   }
 }
 
@@ -100,7 +98,9 @@ class DiscordClient[F[_]: Async: Processes: Temporal] private (
     backend.send(
       request.response(asWebSocket { (ws: WebSocket[F]) =>
         Logger[F].info("[GATEWAY] Connected to Discord Gateway") >>
-        handleGatewayEvents(ws)  // This blocks until error, keeping WebSocket alive
+        handleGatewayEvents(ws).guaranteeCase { outcome =>
+          logGatewayEventLoopTermination(outcome) >> stopHeartbeat
+        }  // This blocks until error, keeping WebSocket alive
       })
     ).map(_.body).flatMap(
       error => Async[F].raiseError(new RuntimeException(s"WebSocket connection failed: $error"))
@@ -109,55 +109,60 @@ class DiscordClient[F[_]: Async: Processes: Temporal] private (
 
   private def handleGatewayEvents(ws: WebSocket[F]): F[Unit] = {
     def processGatewayEvent(message: String): F[Unit] = {
-      Async[F].start {
-        for {
-          _ <- Logger[F].debug(s"[GATEWAY] Received: $message")
-          _ <- parse(message) match {
-            case Right(json) =>
-              val op = json.hcursor.get[Int]("op").getOrElse(-1)
-              val seq = json.hcursor.get[Int]("s").toOption
-              // Only update sequence if present (only DISPATCH events have sequence numbers)
-              val updateSeq = seq.fold(Async[F].unit)(s => lastSeqRef.set(Some(s)))
-              updateSeq >>
+      for {
+        _ <- parse(message) match {
+          case Right(json) =>
+            val op = json.hcursor.get[Int]("op").getOrElse(-1)
+            val seq = json.hcursor.get[Int]("s").toOption
+            val eventType = json.hcursor.get[String]("t").toOption
+            val updateSeq = seq.fold(Async[F].unit)(s => lastSeqRef.set(Some(s)))
+            val logMetadata = Logger[F].debug(s"[GATEWAY] Received opcode=$op event=${eventType.getOrElse("none")} seq=${seq.fold("none")(_.toString)}")
+            updateSeq >> logMetadata >>
               (op match {
                 case 10 => // Hello - start heartbeat
                   val heartbeatInterval = json.hcursor.downField("d").get[Int]("heartbeat_interval").getOrElse(-1)
                   Logger[F].info(s"[GATEWAY] Received HELLO (heartbeat interval: ${heartbeatInterval}ms)") >>
-                  eventHandler.sendIdentify(ws) >>
-                  startHeartbeat(ws, heartbeatInterval)
+                    eventHandler.sendIdentify(ws) >>
+                    startHeartbeat(ws, heartbeatInterval)
 
                 case 11 => // Heartbeat ACK
                   lastHeartbeatAck.set(Some(System.currentTimeMillis())) >>
-                  Logger[F].debug("[GATEWAY] Received heartbeat ACK")
+                    Logger[F].debug("[GATEWAY] Received heartbeat ACK")
 
                 case 1 => // Heartbeat Request
                   Logger[F].info("[GATEWAY] Discord requested immediate heartbeat") >>
-                  sendHeartbeat(ws)
+                    sendHeartbeat(ws)
 
                 case 0 => // Dispatch - delegate to event handler
                   decode[GatewayPayload](message) match {
-                    case Right(payload) => eventHandler.handleDispatchEvent(payload, ws).void
+                    case Right(payload) =>
+                      Async[F].start(
+                        eventHandler.handleDispatchEvent(payload, ws).handleErrorWith { error =>
+                          Logger[F].error(error)(s"[GATEWAY] Dispatch handler failed event=${payload.t.getOrElse("none")} seq=${payload.s.fold("none")(_.toString)}") >>
+                            Async[F].pure(PayloadResult())
+                        }
+                      ).void
                     case Left(error) => Logger[F].error(s"[GATEWAY] Failed to decode payload: $error")
                   }
 
                 case 9 => // Invalid Session
                   Logger[F].error("[GATEWAY] Invalid session (opcode 9) - will reconnect and re-identify") >>
-                  stopHeartbeat >>
-                  Async[F].raiseError(new Exception("Invalid session (opcode 9)"))
+                    stopHeartbeat >>
+                    voiceManager.abortActiveVoiceSessions("main Discord gateway invalid session") >>
+                    Async[F].raiseError(new Exception("Invalid session (opcode 9)"))
 
                 case 7 => // Reconnect
                   Logger[F].warn("[GATEWAY] Discord requested reconnect (opcode 7)") >>
-                  stopHeartbeat >>
-                  Async[F].raiseError(new Exception("Discord requested reconnect (opcode 7)"))
+                    stopHeartbeat >>
+                    Async[F].raiseError(new Exception("Discord requested reconnect (opcode 7)"))
 
                 case _ =>
                   Logger[F].debug(s"[GATEWAY] Unhandled opcode: $op")
               })
-            case Left(error) =>
-              Logger[F].error(s"[GATEWAY] Failed to parse message: $error")
-          }
-        } yield ()
-      }.void
+          case Left(error) =>
+            Logger[F].error(s"[GATEWAY] Failed to parse gateway message: ${error.getClass.getSimpleName}")
+        }
+      } yield ()
     }
 
     // Run event loop forever, propagating errors naturally
@@ -208,15 +213,20 @@ class DiscordClient[F[_]: Async: Processes: Temporal] private (
   }
 
   private def startHeartbeat(ws: WebSocket[F], interval: Int): F[Unit] = {
-    heartbeatFiber.get.flatMap(_.fold(
-      ifEmpty =
-        Logger[F].info(s"[GATEWAY] Starting heartbeat loop (interval: ${interval}ms)") >>
-        Async[F].start(heartbeatStream(ws, interval).compile.drain.handleErrorWith { _ =>
-          Logger[F].debug("[GATEWAY] Heartbeat loop stopped")
-        }).flatMap(fiber => heartbeatFiber.set(Some(fiber)))
-    )(
-      _ => Logger[F].debug("[GATEWAY] Heartbeat already running, skipping")
-    ))
+    stopHeartbeat >>
+      Logger[F].info(s"[GATEWAY] Starting heartbeat loop (interval: ${interval}ms)") >>
+      Async[F].uncancelable { poll =>
+        poll(
+          Async[F].start(
+            heartbeatStream(ws, interval).compile.drain.guarantee(
+              heartbeatFiber.set(None) >>
+                Logger[F].debug("[GATEWAY] Heartbeat loop stopped")
+            )
+          )
+        ).flatMap { fiber =>
+          poll(heartbeatFiber.set(Some(fiber))).onCancel(fiber.cancel)
+        }
+      }
   }
 
   private def stopHeartbeat: F[Unit] = {
@@ -226,4 +236,14 @@ class DiscordClient[F[_]: Async: Processes: Temporal] private (
       )
     )
   }
+
+  private def logGatewayEventLoopTermination(outcome: Outcome[F, Throwable, Unit]): F[Unit] =
+    outcome match {
+      case Outcome.Errored(error) =>
+        Logger[F].error(s"[GATEWAY] handleGatewayEvents errored: ${error.getMessage}")
+      case Outcome.Canceled() =>
+        Logger[F].warn("[GATEWAY] handleGatewayEvents canceled/finalized")
+      case Outcome.Succeeded(_) =>
+        Logger[F].warn("[GATEWAY] handleGatewayEvents completed unexpectedly")
+    }
 }
