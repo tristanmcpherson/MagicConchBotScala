@@ -8,9 +8,23 @@
     </encoder>
   </appender>
 
+  <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <file>logs/magic-conch.log</file>
+    <append>true</append>
+    <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+      <fileNamePattern>logs/magic-conch.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+      <maxFileSize>10MB</maxFileSize>
+      <maxHistory>14</maxHistory>
+    </rollingPolicy>
+    <encoder>
+      <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{0} - %msg%n</pattern>
+    </encoder>
+  </appender>
+
   <!-- Set root logger level to INFO -->
-  <root level="INFO">
+  <root level="DEBUG">
     <appender-ref ref="STDOUT" />
+    <appender-ref ref="FILE" />
   </root>
 
   <!-- Optional: Set specific package levels -->
