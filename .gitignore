@@ -80,3 +80,7 @@ docker-compose.override.yml
 */node_modules
 dashboard-ui/node_modules/*
 *.semanticdb
+
+# Local agent/session artifacts
+.sisyphus/
+nul
