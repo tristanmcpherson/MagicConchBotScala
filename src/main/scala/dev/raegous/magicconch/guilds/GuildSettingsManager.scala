@@ -5,7 +5,7 @@ import cats.implicits.*
 import org.typelevel.log4cats.Logger
 
 // volume multiplier: 0.0 = mute, 1.0 = 100%, 2.0 = 200%
-case class GuildSettings(volume: Double = 1.0)
+case class GuildSettings(volume: Double = 0.5)
 
 class GuildSettingsManager[F[_]: Async] private (
   private val settingsRef: Ref[F, Map[String, GuildSettings]]

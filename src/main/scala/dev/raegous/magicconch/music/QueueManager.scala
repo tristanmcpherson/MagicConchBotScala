@@ -17,12 +17,17 @@ class QueueManager[F[_]: Async](
   private val musicQueueRef: Ref[F, Map[String, MusicQueue]]
 )(using Logger[F]) {
 
+  private val defaultQueue = MusicQueue(List.empty, None, false)
+
+  private def queueForGuild(queues: Map[String, MusicQueue], guildId: String): MusicQueue =
+    queues.getOrElse(guildId, defaultQueue)
+
   /**
    * Add a track to the end of the queue for a guild
    */
   def addToQueue(guildId: String, track: MusicTrack): F[Unit] = {
     musicQueueRef.update { queues =>
-      val currentQueue = queues.getOrElse(guildId, MusicQueue(List.empty, None, false))
+      val currentQueue = queueForGuild(queues, guildId)
       val updatedQueue = currentQueue.copy(tracks = currentQueue.tracks :+ track)
       queues + (guildId -> updatedQueue)
     } >> Logger[F].info(s"[QUEUE] Added '${track.title}' to queue for guild $guildId")
@@ -32,7 +37,7 @@ class QueueManager[F[_]: Async](
    * Get the current queue state for a guild
    */
   def getQueue(guildId: String): F[MusicQueue] = {
-    musicQueueRef.get.map(_.getOrElse(guildId, MusicQueue(List.empty, None, false)))
+    musicQueueRef.get.map(queueForGuild(_, guildId))
   }
 
   /**
@@ -40,7 +45,7 @@ class QueueManager[F[_]: Async](
    */
   def clearQueue(guildId: String): F[Unit] = {
     musicQueueRef.update { queues =>
-      queues + (guildId -> MusicQueue(List.empty, None, false))
+      queues + (guildId -> defaultQueue)
     } >> Logger[F].info(s"[QUEUE] Cleared queue for guild $guildId")
   }
 
@@ -50,23 +55,24 @@ class QueueManager[F[_]: Async](
    */
   def playNext(guildId: String): F[Option[MusicTrack]] = {
     musicQueueRef.modify { queues =>
-      val currentQueue = queues.getOrElse(guildId, MusicQueue(List.empty, None, false))
-      currentQueue.tracks.headOption match {
-        case Some(nextTrack) =>
-          val updatedQueue = currentQueue.copy(
-            tracks = currentQueue.tracks.tail,
-            currentTrack = Some(nextTrack),
-            isPlaying = false,  // Will be set to true when playback starts
-            currentPosition = 0,
-            startTime = None
-          )
-          (queues + (guildId -> updatedQueue), Some(nextTrack))
-        case None =>
-          val updatedQueue = currentQueue.copy(
-            currentTrack = None,
-            isPlaying = false
-          )
-          (queues + (guildId -> updatedQueue), None)
+      val currentQueue = queueForGuild(queues, guildId)
+      currentQueue.tracks.headOption.fold {
+        val updatedQueue = currentQueue.copy(
+          currentTrack = None,
+          isPlaying = false
+        )
+
+        (queues + (guildId -> updatedQueue), None)
+      } { nextTrack =>
+        val updatedQueue = currentQueue.copy(
+          tracks = currentQueue.tracks.tail,
+          currentTrack = Some(nextTrack),
+          isPlaying = false,
+          currentPosition = 0,
+          startTime = None
+        )
+
+        (queues + (guildId -> updatedQueue), Some(nextTrack))
       }
     }
   }
@@ -76,7 +82,7 @@ class QueueManager[F[_]: Async](
    */
   def setCurrentTrack(guildId: String, track: Option[MusicTrack]): F[Unit] = {
     musicQueueRef.update { queues =>
-      val currentQueue = queues.getOrElse(guildId, MusicQueue(List.empty, None, false))
+      val currentQueue = queueForGuild(queues, guildId)
       val updatedQueue = currentQueue.copy(currentTrack = track)
       queues + (guildId -> updatedQueue)
     }
@@ -94,7 +100,7 @@ class QueueManager[F[_]: Async](
     pauseTime: Option[Long] = None
   ): F[Unit] = {
     musicQueueRef.update { queues =>
-      val currentQueue = queues.getOrElse(guildId, MusicQueue(List.empty, None, false))
+      val currentQueue = queueForGuild(queues, guildId)
       val updatedQueue = currentQueue.copy(
         isPlaying = isPlaying,
         isPaused = isPaused,

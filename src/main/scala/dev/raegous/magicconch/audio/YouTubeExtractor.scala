@@ -32,7 +32,7 @@ class YtDlpExtractor[F[_]: Async: Processes](using Logger[F]) {
     runCommand(ytDlpCommand).flatMap {
       case Some(output) =>
         val streamUrl = output.trim
-        Logger[F].info(s"Extracted audio stream URL: $streamUrl") >>
+        Logger[F].info("Extracted audio stream URL") >>
         Async[F].pure(Some(streamUrl))
       case None =>
         Logger[F].error(s"Failed to extract audio stream URL from: $url") >>
