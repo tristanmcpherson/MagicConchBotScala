@@ -270,8 +270,8 @@ object EncryptionMode {
 
   // Preferred modes in priority order
   val preferredModes: List[EncryptionMode] = List(
-    AeadAes256GcmRtpSize,        // Hardware accelerated on modern CPUs
-    AeadXChaCha20Poly1305RtpSize // Fallback
+    AeadAes256GcmRtpSize,        // Preferred by Discord when offered; hardware accelerated on modern CPUs
+    AeadXChaCha20Poly1305RtpSize // Required fallback mode
   )
 }
 
