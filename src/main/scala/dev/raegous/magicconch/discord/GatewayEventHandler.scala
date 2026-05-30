@@ -204,18 +204,20 @@ class GatewayEventHandler[F[_]: Async] private (
   }
 
   private def handleInteractionCreate(payload: GatewayPayload, ws: WebSocket[F]): F[Unit] = {
-    Logger[F].info(s"Received INTERACTION_CREATE event") >>
-    Logger[F].info(s"Raw interaction payload: ${payload.d.map(_.noSpaces).getOrElse("No data")}") >>
-    payload.d
-      .flatMap(_.as[Interaction].toOption)
-      .fold(
-        Logger[F].error("Failed to parse INTERACTION_CREATE - interaction data could not be decoded") >>
-        Async[F].pure(())
-      )(interaction => processInteraction(interaction, ws))
+    payload.d.fold(
+      Logger[F].error("INTERACTION_CREATE event missing data field")
+    ) { interactionJson =>
+      interactionJson.as[Interaction].fold(
+        _ => Logger[F].error("Failed to parse INTERACTION_CREATE - interaction data could not be decoded"),
+        interaction =>
+          Logger[F].info(s"Received ${summarizeInteraction(interaction)}") >>
+            processInteraction(interaction, ws)
+      )
+    }
   }
 
   private def processInteraction(interaction: Interaction, ws: WebSocket[F]): F[Unit] = {
-    Logger[F].info(s"Parsed interaction - type: ${interaction.`type`}, command: ${interaction.data.map(_.name).getOrElse("N/A")}") >>
+    Logger[F].info(s"Dispatching ${summarizeInteraction(interaction)}") >>
     (interaction.`type` match {
       case 2 => handleSlashCommandInteraction(interaction, ws)
       case 3 => handleMessageComponent(interaction, Some(ws))
@@ -224,11 +226,41 @@ class GatewayEventHandler[F[_]: Async] private (
   }
 
   private def handleSlashCommandInteraction(interaction: Interaction, ws: WebSocket[F]): F[Unit] = {
-    Logger[F].info(s"Handling slash command: ${interaction.data.map(_.name).getOrElse("unknown")}") >>
-    slashCommandManager.handleSlashCommand(interaction, Some(ws)).flatMap { response =>
-      Logger[F].info(s"Got response from slash command handler, sending to Discord") >>
-      discordApi.sendInteractionResponse(interaction.id, interaction.token, response.asJson.printWith(jsonPrinter))
-    }
+    val deferredAck = InteractionResponse(`type` = 5, data = None)
+    Logger[F].info(s"Handling ${summarizeInteraction(interaction)}") >>
+    discordApi.sendInteractionResponse(interaction.id, interaction.token, deferredAck.asJson.printWith(jsonPrinter)) >>
+    Async[F].start {
+      slashCommandManager.handleSlashCommand(interaction, Some(ws))
+        .flatMap { response =>
+          val content = response.data.flatMap(_.content).getOrElse("")
+          val embeds = response.data.flatMap(_.embeds)
+          val components = response.data.flatMap(_.components)
+          Logger[F].info(s"Command completed, editing deferred response") >>
+          discordApi.editRichInteractionResponse(applicationId, interaction.token, content, embeds, components)
+        }
+        .handleErrorWith { error =>
+          val msg = Option(error.getMessage).getOrElse(error.getClass.getSimpleName)
+          Logger[F].error(s"[COMMAND] Slash command error: $msg") >>
+          discordApi.editInteractionResponse(applicationId, interaction.token, s"An error occurred: $msg")
+        }
+    }.void
+  }
+
+  private def summarizeInteraction(interaction: Interaction): String = {
+    List(
+      Some(s"interaction type=${interactionTypeLabel(interaction.`type`)}"),
+      interaction.data.flatMap(_.name.map(name => s"command=$name")),
+      interaction.data.flatMap(_.custom_id.map(customId => s"customId=$customId")),
+      interaction.guild_id.map(guildId => s"guildId=$guildId"),
+      Some(s"channelId=${interaction.channel_id}")
+    ).flatten.mkString(" ")
+  }
+
+  private def interactionTypeLabel(interactionType: Int): String = interactionType match {
+    case 2 => "APPLICATION_COMMAND"
+    case 3 => "MESSAGE_COMPONENT"
+    case 5 => "MODAL_SUBMIT"
+    case other => s"UNKNOWN($other)"
   }
 
   def sendIdentify(ws: WebSocket[F]): F[Unit] = {
