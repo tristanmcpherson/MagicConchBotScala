@@ -9,9 +9,6 @@ import dev.raegous.magicconch.TestFixtures.{testLogger, *}
 import dev.raegous.magicconch.discord.*
 import munit.CatsEffectSuite
 import com.bdmendes.smockito.*
-import com.bdmendes.smockito.given
-import org.mockito.ArgumentMatchers.any
-import org.mockito.Mockito.verify
 
 class PlayerInteractionHandlerTest extends CatsEffectSuite, Smockito {
 
@@ -45,8 +42,11 @@ class PlayerInteractionHandlerTest extends CatsEffectSuite, Smockito {
 
     handler.handle("volume_user123_inc10", interaction, None).map { _ =>
       // Verify volume was set to 0.6 (0.5 + 0.1)
-      verify(mocks.guildSettings).setVolume("guild123", 0.6)
-      verify(mocks.discordApi).sendInteractionResponse(any[String], any[String], any[String])
+      assertEquals(
+        mocks.guildSettings.calls(it.setVolume).head,
+        ("guild123", 0.6)
+      )
+      assertEquals(mocks.discordApi.times(it.sendInteractionResponse), 1)
     }
   }
 
@@ -64,8 +64,11 @@ class PlayerInteractionHandlerTest extends CatsEffectSuite, Smockito {
     )
 
     handler.handle("volume_user123_dec10", interaction, None).map { _ =>
-      verify(mocks.guildSettings).setVolume("guild123", 0.4)
-      verify(mocks.discordApi).sendInteractionResponse(any[String], any[String], any[String])
+      assertEquals(
+        mocks.guildSettings.calls(it.setVolume).head,
+        ("guild123", 0.4)
+      )
+      assertEquals(mocks.discordApi.times(it.sendInteractionResponse), 1)
     }
   }
 
@@ -83,16 +86,34 @@ class PlayerInteractionHandlerTest extends CatsEffectSuite, Smockito {
           .on(it.getVolume)(_ => IO.pure(1.95))
           .on(it.setVolume)((_, _) => IO.unit)
       }
-      _ <- handler.handle("volume_user123_inc10", sampleInteraction(guildId = Some("guild123")), None)
-      _ <- IO { verify(mocks.guildSettings).setVolume("guild123", 2.0) } // Should clamp at 2.0
+      _ <- handler.handle(
+        "volume_user123_inc10",
+        sampleInteraction(guildId = Some("guild123")),
+        None
+      )
+      _ <- IO {
+        assertEquals(
+          mocks.guildSettings.calls(it.setVolume).last,
+          ("guild123", 2.0)
+        )
+      } // Should clamp at 2.0
 
       // Test min clamp
       _ <- IO {
         mocks.guildSettings
           .on(it.getVolume)(_ => IO.pure(0.05))
       }
-      _ <- handler.handle("volume_user123_dec10", sampleInteraction(guildId = Some("guild123")), None)
-      _ <- IO { verify(mocks.guildSettings).setVolume("guild123", 0.0) } // Should clamp at 0.0
+      _ <- handler.handle(
+        "volume_user123_dec10",
+        sampleInteraction(guildId = Some("guild123")),
+        None
+      )
+      _ <- IO {
+        assertEquals(
+          mocks.guildSettings.calls(it.setVolume).last,
+          ("guild123", 0.0)
+        )
+      } // Should clamp at 0.0
     } yield ()
   }
 
@@ -110,7 +131,10 @@ class PlayerInteractionHandlerTest extends CatsEffectSuite, Smockito {
     )
 
     handler.handle("volume_user123_75", interaction, None).map { _ =>
-      verify(mocks.guildSettings).setVolume("guild123", 0.75)
+      assertEquals(
+        mocks.guildSettings.calls(it.setVolume).head,
+        ("guild123", 0.75)
+      )
     }
   }
 
@@ -121,9 +145,11 @@ class PlayerInteractionHandlerTest extends CatsEffectSuite, Smockito {
 
     mocks.voiceManager
       .on(it.isPaused)(_ => IO.pure(pausedState))
-      .on(it.pausePlayback)(_ => IO {
-        pausedState = true
-      })
+      .on(it.pausePlayback)(_ =>
+        IO {
+          pausedState = true
+        }
+      )
 
     withDiscordApi(mocks.discordApi)
 
@@ -135,8 +161,8 @@ class PlayerInteractionHandlerTest extends CatsEffectSuite, Smockito {
     )
 
     handler.handle("player_pause_guild123", interaction, None).map { _ =>
-      verify(mocks.voiceManager).pausePlayback("guild123")
-      verify(mocks.discordApi).sendInteractionResponse(any[String], any[String], any[String])
+      assertEquals(mocks.voiceManager.calls(it.pausePlayback).head, "guild123")
+      assertEquals(mocks.discordApi.times(it.sendInteractionResponse), 1)
     }
   }
 
@@ -147,9 +173,11 @@ class PlayerInteractionHandlerTest extends CatsEffectSuite, Smockito {
 
     mocks.voiceManager
       .on(it.isPaused)(_ => IO.pure(pausedState))
-      .on(it.resumePlayback)(_ => IO {
-        pausedState = false
-      })
+      .on(it.resumePlayback)(_ =>
+        IO {
+          pausedState = false
+        }
+      )
 
     withDiscordApi(mocks.discordApi)
 
@@ -161,8 +189,8 @@ class PlayerInteractionHandlerTest extends CatsEffectSuite, Smockito {
     )
 
     handler.handle("player_resume_guild123", interaction, None).map { _ =>
-      verify(mocks.voiceManager).resumePlayback("guild123")
-      verify(mocks.discordApi).sendInteractionResponse(any[String], any[String], any[String])
+      assertEquals(mocks.voiceManager.calls(it.resumePlayback).head, "guild123")
+      assertEquals(mocks.discordApi.times(it.sendInteractionResponse), 1)
     }
   }
 
@@ -183,8 +211,8 @@ class PlayerInteractionHandlerTest extends CatsEffectSuite, Smockito {
 
     // Note: WebSocket is None, so leave won't be called
     handler.handle("player_stop_guild123", interaction, None).map { _ =>
-      verify(mocks.voiceManager).stopPlayback("guild123")
-      verify(mocks.discordApi).sendInteractionResponse(any[String], any[String], any[String])
+      assertEquals(mocks.voiceManager.calls(it.stopPlayback).head, "guild123")
+      assertEquals(mocks.discordApi.times(it.sendInteractionResponse), 1)
     }
   }
 
@@ -207,9 +235,11 @@ class PlayerInteractionHandlerTest extends CatsEffectSuite, Smockito {
 
     mocks.voiceManager
       .on(it.getQueue)(_ => IO.pure(currentQueue))
-      .on(it.skipTrack)(_ => IO {
-        currentQueue = queueAfterSkip
-      })
+      .on(it.skipTrack)(_ =>
+        IO {
+          currentQueue = queueAfterSkip
+        }
+      )
 
     withDiscordApi(mocks.discordApi)
 
@@ -221,8 +251,8 @@ class PlayerInteractionHandlerTest extends CatsEffectSuite, Smockito {
     )
 
     handler.handle("player_skip_guild123", interaction, None).map { _ =>
-      verify(mocks.voiceManager).skipTrack("guild123")
-      verify(mocks.discordApi).sendInteractionResponse(any[String], any[String], any[String])
+      assertEquals(mocks.voiceManager.calls(it.skipTrack).head, "guild123")
+      assertEquals(mocks.discordApi.times(it.sendInteractionResponse), 1)
     }
   }
 
@@ -230,7 +260,8 @@ class PlayerInteractionHandlerTest extends CatsEffectSuite, Smockito {
     val mocks = PlayerMocks[IO]()
     val handler = mocks.createHandler()
 
-    val interaction = sampleInteraction(customId = Some("player_pause")) // Missing guild ID
+    val interaction =
+      sampleInteraction(customId = Some("player_pause")) // Missing guild ID
 
     // Should not throw exception, just log error
     handler.handle("player_pause", interaction, None).attempt.map { result =>

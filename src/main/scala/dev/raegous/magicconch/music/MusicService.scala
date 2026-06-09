@@ -9,9 +9,9 @@ import dev.raegous.magicconch.audio.internals.*
 import dev.raegous.magicconch.discord.*
 
 class MusicService[F[_]: Async: Processes](
-  val queueManager: QueueManager[F],
-  val playbackController: PlaybackController[F],
-  val trackExtractor: TrackExtractor[F]
+    val queueManager: QueueManager[F],
+    val playbackController: PlaybackController[F],
+    val trackExtractor: TrackExtractor[F]
 )(using Logger[F]) {
 
   def addToQueue(guildId: String, track: MusicTrack): F[Unit] =
@@ -23,22 +23,34 @@ class MusicService[F[_]: Async: Processes](
   def clearQueue(guildId: String): F[Unit] =
     queueManager.clearQueue(guildId)
 
-  def addPlaylist(guildId: String, playlistUrl: String, requestedBy: String): F[Int] =
+  def addPlaylist(
+      guildId: String,
+      playlistUrl: String,
+      requestedBy: String
+  ): F[Int] =
     Logger[F].info(s"[PLAYLIST] Adding playlist to queue for guild $guildId") >>
-    trackExtractor.extractPlaylistUrls(playlistUrl).flatMap { urls =>
-      Logger[F].info(s"[PLAYLIST] Found ${urls.length} tracks in playlist") >>
-      urls.traverse { url =>
-        trackExtractor.extractTrackInfo(url).flatMap(
-          _.fold(Async[F].pure(0)) { track =>
-            val trackWithUser = track.copy(requestedBy = requestedBy)
-            addToQueue(guildId, trackWithUser).as(1)
-          }
-        )
-      }.flatMap { results =>
-        val addedCount = results.sum
-        Logger[F].info(s"[PLAYLIST] Successfully added $addedCount tracks to queue").as(addedCount)
+      trackExtractor.extractPlaylistUrls(playlistUrl).flatMap { urls =>
+        Logger[F].info(s"[PLAYLIST] Found ${urls.length} tracks in playlist") >>
+          urls
+            .traverse { url =>
+              trackExtractor
+                .extractTrackInfo(url)
+                .flatMap(
+                  _.fold(Async[F].pure(0)) { track =>
+                    val trackWithUser = track.copy(requestedBy = requestedBy)
+                    addToQueue(guildId, trackWithUser).as(1)
+                  }
+                )
+            }
+            .flatMap { results =>
+              val addedCount = results.sum
+              Logger[F]
+                .info(
+                  s"[PLAYLIST] Successfully added $addedCount tracks to queue"
+                )
+                .as(addedCount)
+            }
       }
-    }
 
   def extractTrackInfo(url: String): F[Option[MusicTrack]] =
     trackExtractor.extractTrackInfo(url)
@@ -76,10 +88,10 @@ class MusicService[F[_]: Async: Processes](
 
 object MusicService {
   def make[F[_]: Async: Processes](
-    voiceGateway: VoiceGateway[F],
-    activePlaybackFibers: Ref[F, Map[String, Fiber[F, Throwable, Unit]]],
-    activeVoiceConnections: Ref[F, Map[String, sttp.ws.WebSocket[F]]],
-    gatewayWebSocketRef: Ref[F, Option[sttp.ws.WebSocket[F]]]
+      voiceGateway: VoiceGateway[F],
+      activePlaybackFibers: Ref[F, Map[String, Fiber[F, Throwable, Unit]]],
+      activeVoiceConnections: Ref[F, Map[String, sttp.ws.WebSocket[F]]],
+      gatewayWebSocketRef: Ref[F, Option[sttp.ws.WebSocket[F]]]
   )(using Logger[F]): Resource[F, MusicService[F]] =
     for {
       queueManager <- QueueManager.make[F]
@@ -92,5 +104,9 @@ object MusicService {
         activeVoiceConnections,
         gatewayWebSocketRef
       )
-    } yield new MusicService[F](queueManager, playbackController, trackExtractor)
+    } yield new MusicService[F](
+      queueManager,
+      playbackController,
+      trackExtractor
+    )
 }

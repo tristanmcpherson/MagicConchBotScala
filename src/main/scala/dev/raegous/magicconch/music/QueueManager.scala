@@ -5,54 +5,55 @@ import cats.implicits.*
 import dev.raegous.magicconch.discord.*
 import org.typelevel.log4cats.Logger
 
-/**
- * Manages music queues for guilds
- *
- * Responsibilities:
- * - Queue CRUD operations (add, get, clear)
- * - Queue state management (playing, paused, position)
- * - Next track selection
- */
+/** Manages music queues for guilds
+  *
+  * Responsibilities:
+  *   - Queue CRUD operations (add, get, clear)
+  *   - Queue state management (playing, paused, position)
+  *   - Next track selection
+  */
 class QueueManager[F[_]: Async](
-  private val musicQueueRef: Ref[F, Map[String, MusicQueue]]
+    private val musicQueueRef: Ref[F, Map[String, MusicQueue]]
 )(using Logger[F]) {
 
   private val defaultQueue = MusicQueue(List.empty, None, false)
 
-  private def queueForGuild(queues: Map[String, MusicQueue], guildId: String): MusicQueue =
+  private def queueForGuild(
+      queues: Map[String, MusicQueue],
+      guildId: String
+  ): MusicQueue =
     queues.getOrElse(guildId, defaultQueue)
 
-  /**
-   * Add a track to the end of the queue for a guild
-   */
+  /** Add a track to the end of the queue for a guild
+    */
   def addToQueue(guildId: String, track: MusicTrack): F[Unit] = {
     musicQueueRef.update { queues =>
       val currentQueue = queueForGuild(queues, guildId)
-      val updatedQueue = currentQueue.copy(tracks = currentQueue.tracks :+ track)
+      val updatedQueue =
+        currentQueue.copy(tracks = currentQueue.tracks :+ track)
       queues + (guildId -> updatedQueue)
-    } >> Logger[F].info(s"[QUEUE] Added '${track.title}' to queue for guild $guildId")
+    } >> Logger[F].info(
+      s"[QUEUE] Added '${track.title}' to queue for guild $guildId"
+    )
   }
 
-  /**
-   * Get the current queue state for a guild
-   */
+  /** Get the current queue state for a guild
+    */
   def getQueue(guildId: String): F[MusicQueue] = {
     musicQueueRef.get.map(queueForGuild(_, guildId))
   }
 
-  /**
-   * Clear the entire queue for a guild
-   */
+  /** Clear the entire queue for a guild
+    */
   def clearQueue(guildId: String): F[Unit] = {
     musicQueueRef.update { queues =>
       queues + (guildId -> defaultQueue)
     } >> Logger[F].info(s"[QUEUE] Cleared queue for guild $guildId")
   }
 
-  /**
-   * Pop the next track from the queue and set it as current
-   * Returns the popped track
-   */
+  /** Pop the next track from the queue and set it as current Returns the popped
+    * track
+    */
   def playNext(guildId: String): F[Option[MusicTrack]] = {
     musicQueueRef.modify { queues =>
       val currentQueue = queueForGuild(queues, guildId)
@@ -77,9 +78,8 @@ class QueueManager[F[_]: Async](
     }
   }
 
-  /**
-   * Set the current track (used when resuming or seeking)
-   */
+  /** Set the current track (used when resuming or seeking)
+    */
   def setCurrentTrack(guildId: String, track: Option[MusicTrack]): F[Unit] = {
     musicQueueRef.update { queues =>
       val currentQueue = queueForGuild(queues, guildId)
@@ -88,16 +88,15 @@ class QueueManager[F[_]: Async](
     }
   }
 
-  /**
-   * Update queue playback state
-   */
+  /** Update queue playback state
+    */
   def updatePlaybackState(
-    guildId: String,
-    isPlaying: Boolean,
-    isPaused: Boolean = false,
-    currentPosition: Int = 0,
-    startTime: Option[Long] = None,
-    pauseTime: Option[Long] = None
+      guildId: String,
+      isPlaying: Boolean,
+      isPaused: Boolean = false,
+      currentPosition: Int = 0,
+      startTime: Option[Long] = None,
+      pauseTime: Option[Long] = None
   ): F[Unit] = {
     musicQueueRef.update { queues =>
       val currentQueue = queueForGuild(queues, guildId)
@@ -112,18 +111,18 @@ class QueueManager[F[_]: Async](
     }
   }
 
-  /**
-   * Check if queue is currently paused
-   */
+  /** Check if queue is currently paused
+    */
   def isPaused(guildId: String): F[Boolean] = {
     getQueue(guildId).map(_.isPaused)
   }
 
   def getCurrentPosition(guildId: String): F[Int] =
     getQueue(guildId).map { queue =>
-      queue.startTime.filter(_ => !queue.isPaused).fold(queue.currentPosition) { start =>
-        val elapsed = ((System.currentTimeMillis() - start) / 1000).toInt
-        queue.currentPosition + elapsed
+      queue.startTime.filter(_ => !queue.isPaused).fold(queue.currentPosition) {
+        start =>
+          val elapsed = ((System.currentTimeMillis() - start) / 1000).toInt
+          queue.currentPosition + elapsed
       }
     }
 }

@@ -5,7 +5,8 @@ import cats.implicits.*
 import dev.raegous.magicconch.audio.VoiceManager
 import org.typelevel.log4cats.Logger
 
-class LeaveCommand[F[_]: Async](voiceManager: VoiceManager[F])(using Logger[F]) extends Command[F] {
+class LeaveCommand[F[_]: Async](voiceManager: VoiceManager[F])(using Logger[F])
+    extends Command[F] {
   val name = "leave"
   val description = "Leave the voice channel"
   val arguments = List.empty
@@ -14,9 +15,11 @@ class LeaveCommand[F[_]: Async](voiceManager: VoiceManager[F])(using Logger[F]) 
     context.gatewayWs match {
       case Some(ws) =>
         voiceManager.leaveVoiceChannel(context.guildId, ws) >>
-        Async[F].pure(CommandResult("👋 Left voice channel!"))
+          Async[F].pure(CommandResult("👋 Left voice channel!"))
       case None =>
-        Async[F].pure(CommandResult("❌ Gateway connection not available", isError = true))
+        Async[F].pure(
+          CommandResult("❌ Gateway connection not available", isError = true)
+        )
     }
   }
 }

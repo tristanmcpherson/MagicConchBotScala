@@ -20,10 +20,14 @@ object MagicConchBot extends IOApp {
         val delay = Math.min(30, Math.pow(2, retryCount)).seconds
         val errorMsg = Option(error.getMessage).getOrElse("unknown error")
         val errorType = error.getClass.getSimpleName
-        Logger[IO].error(s"Discord connection failed ($errorType): $errorMsg") >>
-        Logger[IO].info(s"Reconnecting in ${delay.toSeconds} seconds... (attempt ${retryCount + 1})") >>
-        IO.sleep(delay) >>
-        attempt(retryCount + 1)
+        Logger[IO].error(
+          s"Discord connection failed ($errorType): $errorMsg"
+        ) >>
+          Logger[IO].info(
+            s"Reconnecting in ${delay.toSeconds} seconds... (attempt ${retryCount + 1})"
+          ) >>
+          IO.sleep(delay) >>
+          attempt(retryCount + 1)
       }
     }
 
@@ -32,37 +36,68 @@ object MagicConchBot extends IOApp {
 
   def run(args: List[String]): IO[ExitCode] = {
     val envVars = for {
-      token <- sys.env.get("DISCORD_TOKEN").toRight("DISCORD_TOKEN environment variable not set!")
-      applicationId <- sys.env.get("DISCORD_APP_ID").toRight("DISCORD_APP_ID environment variable not set!")
+      token <- sys.env
+        .get("DISCORD_TOKEN")
+        .toRight("DISCORD_TOKEN environment variable not set!")
+      applicationId <- sys.env
+        .get("DISCORD_APP_ID")
+        .toRight("DISCORD_APP_ID environment variable not set!")
     } yield (token, applicationId)
 
     envVars.fold(
       error => Logger[IO].error(error).as(ExitCode.Error),
       { case (token, applicationId) =>
-        val youtubeApiKey = sys.env.getOrElse("YOUTUBE_API_KEY", {
-          println("Warning: YOUTUBE_API_KEY environment variable not set! Search command will be disabled.")
-          ""
-        })
+        val youtubeApiKey = sys.env.getOrElse(
+          "YOUTUBE_API_KEY", {
+            println(
+              "Warning: YOUTUBE_API_KEY environment variable not set! Search command will be disabled."
+            )
+            ""
+          }
+        )
 
         (
           HttpClientFs2Backend.resource[IO](),
           EmberClientBuilder.default[IO].build
-        ).tupled.flatMap { case (backend, httpClient) =>
-          DiscordClient.make[IO](token, applicationId, youtubeApiKey, backend, httpClient)
-        }.use { client =>
-          val dashboardPort = sys.env.get("DASHBOARD_PORT").flatMap(_.toIntOption).getOrElse(9090)
-          val dashboardServer = new DashboardServer[IO](client.voiceManager, client.guildTracker, dashboardPort)
+        ).tupled
+          .flatMap { case (backend, httpClient) =>
+            DiscordClient.make[IO](
+              token,
+              applicationId,
+              youtubeApiKey,
+              backend,
+              httpClient
+            )
+          }
+          .use { client =>
+            val dashboardPort = sys.env
+              .get("DASHBOARD_PORT")
+              .flatMap(_.toIntOption)
+              .getOrElse(9090)
+            val dashboardServer = new DashboardServer[IO](
+              client.voiceManager,
+              client.guildTracker,
+              dashboardPort
+            )
 
-          for {
-            _ <- Logger[IO].info("Starting Magic Conch Bot...")
-            _ <- Logger[IO].info(s"Dashboard will be available at http://localhost:$dashboardPort")
-            _ <- dashboardServer.start.use(_ => connectWithRetry(client)).guaranteeCase {
-              case Outcome.Succeeded(_) => Logger[IO].info("Magic Conch Bot stopped cleanly.")
-              case Outcome.Errored(error) => Logger[IO].error(error)("Magic Conch Bot stopped with an error.")
-              case Outcome.Canceled() => Logger[IO].info("Magic Conch Bot stopped.")
-            }
-          } yield ExitCode.Success
-        }
+            for {
+              _ <- Logger[IO].info("Starting Magic Conch Bot...")
+              _ <- Logger[IO].info(
+                s"Dashboard will be available at http://localhost:$dashboardPort"
+              )
+              _ <- dashboardServer.start
+                .use(_ => connectWithRetry(client))
+                .guaranteeCase {
+                  case Outcome.Succeeded(_) =>
+                    Logger[IO].info("Magic Conch Bot stopped cleanly.")
+                  case Outcome.Errored(error) =>
+                    Logger[IO]
+                      .error(error)("Magic Conch Bot stopped with an error.")
+                  case Outcome.Canceled() =>
+                    Logger[IO].info("Magic Conch Bot stopped.")
+                }
+            } yield ExitCode.Success
+          }
       }
     )
   }

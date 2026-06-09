@@ -10,7 +10,9 @@ class DaveSessionManagerTest extends FunSuite {
   private val leaderUserId = "209012345678901234"
   private val channelId = "820144843396612127"
 
-  test("external sender package should initialize the pending group and send a fresh replacement key package once") {
+  test(
+    "external sender package should initialize the pending group and send a fresh replacement key package once"
+  ) {
     val actions = (for {
       manager <- DaveSessionManager.create[IO](userId, channelId)
       initial <- manager.onSelectProtocolAck(1)
@@ -20,9 +22,15 @@ class DaveSessionManagerTest extends FunSuite {
     } yield (initial, firstExternal, secondExternal, state)).unsafeRunSync()
 
     val (initial, firstExternal, secondExternal, state) = actions
-    val initialKeyPackages = initial.collect { case DaveGatewayAction.SendMlsKeyPackage(payload) => payload }
-    val firstExternalKeyPackages = firstExternal.collect { case DaveGatewayAction.SendMlsKeyPackage(payload) => payload }
-    val secondExternalKeyPackages = secondExternal.collect { case DaveGatewayAction.SendMlsKeyPackage(payload) => payload }
+    val initialKeyPackages = initial.collect {
+      case DaveGatewayAction.SendMlsKeyPackage(payload) => payload
+    }
+    val firstExternalKeyPackages = firstExternal.collect {
+      case DaveGatewayAction.SendMlsKeyPackage(payload) => payload
+    }
+    val secondExternalKeyPackages = secondExternal.collect {
+      case DaveGatewayAction.SendMlsKeyPackage(payload) => payload
+    }
 
     assertEquals(initialKeyPackages.length, 1)
     assertEquals(firstExternalKeyPackages.length, 1)
@@ -38,10 +46,15 @@ class DaveSessionManagerTest extends FunSuite {
       resent <- manager.onPrepareEpoch(0, 1, 1)
     } yield resent).unsafeRunSync()
 
-    assertEquals(actions.count(_.isInstanceOf[DaveGatewayAction.SendMlsKeyPackage]), 1)
+    assertEquals(
+      actions.count(_.isInstanceOf[DaveGatewayAction.SendMlsKeyPackage]),
+      1
+    )
   }
 
-  test("init transition zero should not mark protocol one pending group ready") {
+  test(
+    "init transition zero should not mark protocol one pending group ready"
+  ) {
     val isReady = (for {
       manager <- DaveSessionManager.create[IO](userId, channelId)
       _ <- manager.onSelectProtocolAck(1)
@@ -53,49 +66,84 @@ class DaveSessionManagerTest extends FunSuite {
     assert(!isReady)
   }
 
-  test("committing initial proposals should wait for gateway transition execution before media is ready") {
+  test(
+    "committing initial proposals should wait for gateway transition execution before media is ready"
+  ) {
     val ready = (for {
       manager <- DaveSessionManager.create[IO](userId, channelId)
       _ <- manager.onSelectProtocolAck(1)
       joinerState <- DaveProtocol.generateKeyState[IO](joinerUserId)
-      externalSigner <- IO.blocking(DaveMlsTestHarness.createExternalSigner("gateway".getBytes("UTF-8")))
+      externalSigner <- IO.blocking(
+        DaveMlsTestHarness.createExternalSigner("gateway".getBytes("UTF-8"))
+      )
       _ <- manager.onExternalSenderPackage(
-        DaveSupport.GatewayBinaryCodec.encode(DaveSupport.MlsExternalSenderPackage(1, externalSigner.sender())).drop(3)
+        DaveSupport.GatewayBinaryCodec
+          .encode(
+            DaveSupport.MlsExternalSenderPackage(1, externalSigner.sender())
+          )
+          .drop(3)
       )
       proposalBatch <- IO.blocking(
-        externalSigner.signedAddProposalBatch(channelId, DaveProtocol.buildKeyPackageMessageSync(joinerState, joinerUserId))
+        externalSigner.signedAddProposalBatch(
+          channelId,
+          DaveProtocol.buildKeyPackageMessageSync(joinerState, joinerUserId)
+        )
       )
-      actions <- manager.addUsers(List(joinerUserId)) *> manager.onMlsProposals(proposalBatch)
+      actions <- manager.addUsers(List(joinerUserId)) *> manager.onMlsProposals(
+        proposalBatch
+      )
       isReady <- manager.isMediaReady
       state <- manager.debugState
     } yield (actions, isReady, state)).unsafeRunSync()
 
-    assert(ready._1.exists(_.isInstanceOf[DaveGatewayAction.SendMlsCommitWelcome]))
+    assert(
+      ready._1.exists(_.isInstanceOf[DaveGatewayAction.SendMlsCommitWelcome])
+    )
     assert(!ready._2)
     assert(ready._3.contains("status=AWAITING_RESPONSE"))
     assert(ready._3.contains("selfRatchet=false"))
   }
 
-  test("committing protocol raw-vector proposals should preserve exact MLS messages") {
+  test(
+    "committing protocol raw-vector proposals should preserve exact MLS messages"
+  ) {
     val results = (for {
       manager <- DaveSessionManager.create[IO](userId, channelId)
       joinerState <- DaveProtocol.generateKeyState[IO](joinerUserId)
-      externalSigner <- IO.blocking(DaveMlsTestHarness.createExternalSigner("gateway".getBytes("UTF-8")))
+      externalSigner <- IO.blocking(
+        DaveMlsTestHarness.createExternalSigner("gateway".getBytes("UTF-8"))
+      )
       _ <- manager.onSelectProtocolAck(1)
       _ <- manager.onExternalSenderPackage(
-        DaveSupport.GatewayBinaryCodec.encode(DaveSupport.MlsExternalSenderPackage(1, externalSigner.sender())).drop(3)
+        DaveSupport.GatewayBinaryCodec
+          .encode(
+            DaveSupport.MlsExternalSenderPackage(1, externalSigner.sender())
+          )
+          .drop(3)
       )
       proposalBatch <- IO.blocking(
-        externalSigner.signedRawAddProposalBatch(channelId, DaveProtocol.buildKeyPackageMessageSync(joinerState, joinerUserId))
+        externalSigner.signedRawAddProposalBatch(
+          channelId,
+          DaveProtocol.buildKeyPackageMessageSync(joinerState, joinerUserId)
+        )
       )
-      parsed <- IO.fromEither(MlsMessages.parseProposalBatch(proposalBatch).left.map(error => new RuntimeException(error.message)))
-      actions <- manager.addUsers(List(joinerUserId)) *> manager.onMlsProposals(proposalBatch)
+      parsed <- IO.fromEither(
+        MlsMessages
+          .parseProposalBatch(proposalBatch)
+          .left
+          .map(error => new RuntimeException(error.message))
+      )
+      actions <- manager.addUsers(List(joinerUserId)) *> manager.onMlsProposals(
+        proposalBatch
+      )
       state <- manager.debugState
     } yield (parsed, actions, state)).unsafeRunSync()
 
     assertEquals(results._1.proposals.length, 1)
     assertEquals(results._1.rawProposalMessages.length, 1)
-    assert(results._2.exists(_.isInstanceOf[DaveGatewayAction.SendMlsCommitWelcome]))
+    assert(
+      results._2.exists(_.isInstanceOf[DaveGatewayAction.SendMlsCommitWelcome])
+    )
     assert(results._3.contains("status=AWAITING_RESPONSE"))
   }
 
@@ -110,14 +158,21 @@ class DaveSessionManagerTest extends FunSuite {
 
     assert(results._1.isLeft)
     assert(results._2.exists(DaveSupport.MediaFrameCodec.isProtocolFrame))
-    assert(results._3.left.exists(_.getMessage.contains("DAVE audio SSRC mismatch")))
+    assert(
+      results._3.left.exists(_.getMessage.contains("DAVE audio SSRC mismatch"))
+    )
   }
 
-  test("encryptAudio should pass Opus silence frames through without DAVE wrapping") {
+  test(
+    "encryptAudio should pass Opus silence frames through without DAVE wrapping"
+  ) {
     val encrypted = (for {
       manager <- activeManagerWithWelcome
       _ <- manager.assignAudioSsrc(42)
-      frame <- manager.encryptAudioWithSelfCheck(42, DaveSessionManager.OpusSilenceFrame)
+      frame <- manager.encryptAudioWithSelfCheck(
+        42,
+        DaveSessionManager.OpusSilenceFrame
+      )
     } yield frame).unsafeRunSync()
 
     assert(!encrypted.daveApplied)
@@ -125,7 +180,9 @@ class DaveSessionManagerTest extends FunSuite {
     assert(!DaveSupport.MediaFrameCodec.isProtocolFrame(encrypted.frame))
   }
 
-  test("invalid MLS welcome should clear stale media readiness, reset pending state, and request recovery") {
+  test(
+    "invalid MLS welcome should clear stale media readiness, reset pending state, and request recovery"
+  ) {
     val results = (for {
       manager <- activeManagerWithWelcome
       readyBefore <- manager.isMediaReady
@@ -138,8 +195,17 @@ class DaveSessionManagerTest extends FunSuite {
     val (readyBefore, actions, readyAfter, state) = results
 
     assert(readyBefore)
-    assertEquals(actions.collect { case DaveGatewayAction.SendInvalidCommitWelcome(transitionId) => transitionId }, List(12))
-    assertEquals(actions.count(_.isInstanceOf[DaveGatewayAction.SendMlsKeyPackage]), 1)
+    assertEquals(
+      actions.collect {
+        case DaveGatewayAction.SendInvalidCommitWelcome(transitionId) =>
+          transitionId
+      },
+      List(12)
+    )
+    assertEquals(
+      actions.count(_.isInstanceOf[DaveGatewayAction.SendMlsKeyPackage]),
+      1
+    )
     assert(!readyAfter)
     assert(state.contains("selfRatchet=false"))
     assert(state.contains("mediaRatchetActive=false"))
@@ -149,7 +215,9 @@ class DaveSessionManagerTest extends FunSuite {
     assert(state.contains("keyPackageAfterExternalSender=false"))
   }
 
-  test("invalid MLS commit transition should clear stale media readiness, reset pending state, and request recovery") {
+  test(
+    "invalid MLS commit transition should clear stale media readiness, reset pending state, and request recovery"
+  ) {
     val results = (for {
       manager <- activeManagerWithWelcome
       readyBefore <- manager.isMediaReady
@@ -162,8 +230,17 @@ class DaveSessionManagerTest extends FunSuite {
     val (readyBefore, actions, readyAfter, state) = results
 
     assert(readyBefore)
-    assertEquals(actions.collect { case DaveGatewayAction.SendInvalidCommitWelcome(transitionId) => transitionId }, List(12))
-    assertEquals(actions.count(_.isInstanceOf[DaveGatewayAction.SendMlsKeyPackage]), 1)
+    assertEquals(
+      actions.collect {
+        case DaveGatewayAction.SendInvalidCommitWelcome(transitionId) =>
+          transitionId
+      },
+      List(12)
+    )
+    assertEquals(
+      actions.count(_.isInstanceOf[DaveGatewayAction.SendMlsKeyPackage]),
+      1
+    )
     assert(!readyAfter)
     assert(state.contains("selfRatchet=false"))
     assert(state.contains("mediaRatchetActive=false"))
@@ -173,29 +250,49 @@ class DaveSessionManagerTest extends FunSuite {
     assert(state.contains("keyPackageAfterExternalSender=false"))
   }
 
-  test("media readiness should require the executed transition to match the welcome ratchet transition") {
+  test(
+    "media readiness should require the executed transition to match the welcome ratchet transition"
+  ) {
     val results = (for {
       manager <- DaveSessionManager.create[IO](userId, channelId)
       leaderState <- DaveProtocol.generateKeyState[IO](leaderUserId)
-      externalSigner <- IO.blocking(DaveMlsTestHarness.createExternalSigner("gateway".getBytes("UTF-8")))
+      externalSigner <- IO.blocking(
+        DaveMlsTestHarness.createExternalSigner("gateway".getBytes("UTF-8"))
+      )
       _ <- manager.onSelectProtocolAck(1)
       replacementActions <- manager.onExternalSenderPackage(
-        DaveSupport.GatewayBinaryCodec.encode(DaveSupport.MlsExternalSenderPackage(1, externalSigner.sender())).drop(3)
+        DaveSupport.GatewayBinaryCodec
+          .encode(
+            DaveSupport.MlsExternalSenderPackage(1, externalSigner.sender())
+          )
+          .drop(3)
       )
       joinerKeyPackage <- IO.fromOption(
-        replacementActions.collectFirst { case DaveGatewayAction.SendMlsKeyPackage(payload) => payload }
-      )(new RuntimeException("Expected replacement DAVE key package after external sender"))
-      proposalBatch <- IO.blocking(externalSigner.signedAddProposalBatch(channelId, joinerKeyPackage))
-      welcome <- IO.fromEither(
-        DaveProtocol.buildCommitWelcomeFromProposals(
-          state = leaderState,
-          selfUserId = leaderUserId,
-          groupId = channelId,
-          externalSender = Some(externalSigner.sender()),
-          proposals = List(proposalBatch),
-          recognizedUserIds = Set(userId, leaderUserId)
+        replacementActions.collectFirst {
+          case DaveGatewayAction.SendMlsKeyPackage(payload) => payload
+        }
+      )(
+        new RuntimeException(
+          "Expected replacement DAVE key package after external sender"
         )
-          .flatMap(_.flatMap(_.welcomeMessage).toRight("Expected MLS welcome for joiner"))
+      )
+      proposalBatch <- IO.blocking(
+        externalSigner.signedAddProposalBatch(channelId, joinerKeyPackage)
+      )
+      welcome <- IO.fromEither(
+        DaveProtocol
+          .buildCommitWelcomeFromProposals(
+            state = leaderState,
+            selfUserId = leaderUserId,
+            groupId = channelId,
+            externalSender = Some(externalSigner.sender()),
+            proposals = List(proposalBatch),
+            recognizedUserIds = Set(userId, leaderUserId)
+          )
+          .flatMap(
+            _.flatMap(_.welcomeMessage)
+              .toRight("Expected MLS welcome for joiner")
+          )
           .left
           .map(new RuntimeException(_))
       )
@@ -206,7 +303,11 @@ class DaveSessionManagerTest extends FunSuite {
       readyAfterWrongExecute <- manager.isMediaReady
       _ <- manager.onExecuteTransition(12)
       readyAfterMatchingExecute <- manager.isMediaReady
-    } yield (readyBeforeExecute, readyAfterWrongExecute, readyAfterMatchingExecute)).unsafeRunSync()
+    } yield (
+      readyBeforeExecute,
+      readyAfterWrongExecute,
+      readyAfterMatchingExecute
+    )).unsafeRunSync()
 
     assertEquals(results, (false, false, true))
   }
@@ -215,25 +316,43 @@ class DaveSessionManagerTest extends FunSuite {
     for {
       manager <- DaveSessionManager.create[IO](userId, channelId)
       leaderState <- DaveProtocol.generateKeyState[IO](leaderUserId)
-      externalSigner <- IO.blocking(DaveMlsTestHarness.createExternalSigner("gateway".getBytes("UTF-8")))
+      externalSigner <- IO.blocking(
+        DaveMlsTestHarness.createExternalSigner("gateway".getBytes("UTF-8"))
+      )
       _ <- manager.onSelectProtocolAck(1)
       replacementActions <- manager.onExternalSenderPackage(
-        DaveSupport.GatewayBinaryCodec.encode(DaveSupport.MlsExternalSenderPackage(1, externalSigner.sender())).drop(3)
+        DaveSupport.GatewayBinaryCodec
+          .encode(
+            DaveSupport.MlsExternalSenderPackage(1, externalSigner.sender())
+          )
+          .drop(3)
       )
       joinerKeyPackage <- IO.fromOption(
-        replacementActions.collectFirst { case DaveGatewayAction.SendMlsKeyPackage(payload) => payload }
-      )(new RuntimeException("Expected replacement DAVE key package after external sender"))
-      proposalBatch <- IO.blocking(externalSigner.signedAddProposalBatch(channelId, joinerKeyPackage))
-      welcome <- IO.fromEither(
-        DaveProtocol.buildCommitWelcomeFromProposals(
-          state = leaderState,
-          selfUserId = leaderUserId,
-          groupId = channelId,
-          externalSender = Some(externalSigner.sender()),
-          proposals = List(proposalBatch),
-          recognizedUserIds = Set(userId, leaderUserId)
+        replacementActions.collectFirst {
+          case DaveGatewayAction.SendMlsKeyPackage(payload) => payload
+        }
+      )(
+        new RuntimeException(
+          "Expected replacement DAVE key package after external sender"
         )
-          .flatMap(_.flatMap(_.welcomeMessage).toRight("Expected MLS welcome for joiner"))
+      )
+      proposalBatch <- IO.blocking(
+        externalSigner.signedAddProposalBatch(channelId, joinerKeyPackage)
+      )
+      welcome <- IO.fromEither(
+        DaveProtocol
+          .buildCommitWelcomeFromProposals(
+            state = leaderState,
+            selfUserId = leaderUserId,
+            groupId = channelId,
+            externalSender = Some(externalSigner.sender()),
+            proposals = List(proposalBatch),
+            recognizedUserIds = Set(userId, leaderUserId)
+          )
+          .flatMap(
+            _.flatMap(_.welcomeMessage)
+              .toRight("Expected MLS welcome for joiner")
+          )
           .left
           .map(new RuntimeException(_))
       )
@@ -248,7 +367,10 @@ class DaveSessionManagerTest extends FunSuite {
           sequenceNumber = 1,
           externalSender = DaveSupport.ExternalSender(
             signatureKey = Array.fill[Byte](65)(1),
-            credential = DaveSupport.Credential(credentialType = 1, identity = "gateway".getBytes("UTF-8"))
+            credential = DaveSupport.Credential(
+              credentialType = 1,
+              identity = "gateway".getBytes("UTF-8")
+            )
           )
         )
       )

@@ -10,42 +10,45 @@ import dev.raegous.magicconch.guilds.{GuildSettingsManager, GuildTracker}
 import dev.raegous.magicconch.music.{TrackExtractor, YouTubeSearchClient}
 import sttp.ws.WebSocket
 
-/**
- * Reusable mock fixtures to reduce boilerplate in tests
- *
- * Usage:
- * ```scala
- * val mocks = PlayerMocks[IO]()
- *
- * // Configure specific mocks
- * mocks.guildSettings
- *   .on(it.getVolume)(_ => IO.pure(0.5))
- *   .on(it.setVolume)((_, _) => IO.unit)
- *
- * // Create handler with mocks
- * val handler = mocks.createHandler()
- * ```
- */
+/** Reusable mock fixtures to reduce boilerplate in tests
+  *
+  * Usage:
+  * ```scala
+  * val mocks = PlayerMocks[IO]()
+  *
+  * // Configure specific mocks
+  * mocks.guildSettings
+  *   .on(it.getVolume)(_ => IO.pure(0.5))
+  *   .on(it.setVolume)((_, _) => IO.unit)
+  *
+  * // Create handler with mocks
+  * val handler = mocks.createHandler()
+  * ```
+  */
 object MockFixtures extends Smockito {
 
-  /**
-   * Base trait for mock fixtures
-   */
+  /** Base trait for mock fixtures
+    */
   trait MockFixture[F[_], T] {
     def createHandler()(using org.typelevel.log4cats.Logger[F]): T
   }
 
-  /**
-   * Mock fixture for PlayerInteractionHandler tests
-   */
+  /** Mock fixture for PlayerInteractionHandler tests
+    */
   case class PlayerMocks[F[_]: Async](
-    voiceManager: Mock[VoiceManager[F]],
-    discordApi: Mock[DiscordApiClient[F]],
-    guildSettings: Mock[GuildSettingsManager[F]]
+      voiceManager: Mock[VoiceManager[F]],
+      discordApi: Mock[DiscordApiClient[F]],
+      guildSettings: Mock[GuildSettingsManager[F]]
   ) extends MockFixture[F, commands.PlayerInteractionHandler[F]] {
 
-    def createHandler()(using org.typelevel.log4cats.Logger[F]): commands.PlayerInteractionHandler[F] = {
-      new commands.PlayerInteractionHandler[F](voiceManager, discordApi, guildSettings)
+    def createHandler()(using
+        org.typelevel.log4cats.Logger[F]
+    ): commands.PlayerInteractionHandler[F] = {
+      new commands.PlayerInteractionHandler[F](
+        voiceManager,
+        discordApi,
+        guildSettings
+      )
     }
   }
 
@@ -59,23 +62,31 @@ object MockFixtures extends Smockito {
     }
   }
 
-  /**
-   * Mock fixture for SearchInteractionHandler tests
-   */
+  /** Mock fixture for SearchInteractionHandler tests
+    */
   case class SearchMocks[F[_]: Async](
-    voiceManager: Mock[VoiceManager[F]],
-    trackExtractor: Mock[TrackExtractor[F]],
-    discordApi: Mock[DiscordApiClient[F]],
-    applicationId: String
+      voiceManager: Mock[VoiceManager[F]],
+      trackExtractor: Mock[TrackExtractor[F]],
+      discordApi: Mock[DiscordApiClient[F]],
+      applicationId: String
   ) extends MockFixture[F, commands.SearchInteractionHandler[F]] {
 
-    def createHandler()(using org.typelevel.log4cats.Logger[F]): commands.SearchInteractionHandler[F] = {
-      new commands.SearchInteractionHandler[F](voiceManager, trackExtractor, discordApi, applicationId)
+    def createHandler()(using
+        org.typelevel.log4cats.Logger[F]
+    ): commands.SearchInteractionHandler[F] = {
+      new commands.SearchInteractionHandler[F](
+        voiceManager,
+        trackExtractor,
+        discordApi,
+        applicationId
+      )
     }
   }
 
   object SearchMocks {
-    def apply[F[_]: Async](applicationId: String = "app_123"): SearchMocks[F] = {
+    def apply[F[_]: Async](
+        applicationId: String = "app_123"
+    ): SearchMocks[F] = {
       SearchMocks(
         mock[VoiceManager[F]],
         mock[TrackExtractor[F]],
@@ -85,23 +96,24 @@ object MockFixtures extends Smockito {
     }
   }
 
-  /**
-   * Mock fixture for GatewayEventHandler tests
-   */
+  /** Mock fixture for GatewayEventHandler tests
+    */
   case class GatewayMocks[F[_]: Async](
-    token: String,
-    applicationId: String,
-    messageHandler: Mock[MessageHandler[F]],
-    voiceManager: Mock[VoiceManager[F]],
-    trackExtractor: Mock[TrackExtractor[F]],
-    slashCommandManager: Mock[SlashCommandManager[F]],
-    discordApi: Mock[DiscordApiClient[F]],
-    guildTracker: Mock[GuildTracker[F]],
-    guildSettings: Mock[GuildSettingsManager[F]],
-    commandRegistry: Mock[commands.CommandRegistry[F]]
+      token: String,
+      applicationId: String,
+      messageHandler: Mock[MessageHandler[F]],
+      voiceManager: Mock[VoiceManager[F]],
+      trackExtractor: Mock[TrackExtractor[F]],
+      slashCommandManager: Mock[SlashCommandManager[F]],
+      discordApi: Mock[DiscordApiClient[F]],
+      guildTracker: Mock[GuildTracker[F]],
+      guildSettings: Mock[GuildSettingsManager[F]],
+      commandRegistry: Mock[commands.CommandRegistry[F]]
   ) {
 
-    def createHandler()(using org.typelevel.log4cats.Logger[F]): Resource[F, GatewayEventHandler[F]] = {
+    def createHandler()(using
+        org.typelevel.log4cats.Logger[F]
+    ): Resource[F, GatewayEventHandler[F]] = {
       GatewayEventHandler.make[F](
         token,
         applicationId,
@@ -119,8 +131,8 @@ object MockFixtures extends Smockito {
 
   object GatewayMocks {
     def apply[F[_]: Async](
-      token: String = "test_token",
-      applicationId: String = "app_123"
+        token: String = "test_token",
+        applicationId: String = "app_123"
     ): GatewayMocks[F] = {
       GatewayMocks(
         token,
@@ -137,18 +149,19 @@ object MockFixtures extends Smockito {
     }
   }
 
-  /**
-   * Mock fixture for InteractionRouter tests
-   */
+  /** Mock fixture for InteractionRouter tests
+    */
   case class RouterMocks[F[_]: Async](
-    handlers: List[commands.ComponentInteractionHandler[F]]
+      handlers: List[commands.ComponentInteractionHandler[F]]
   ) {
 
     def createRouter(): commands.InteractionRouter[F] = {
       new commands.InteractionRouter[F](handlers)
     }
 
-    def withHandler(handler: commands.ComponentInteractionHandler[F]): RouterMocks[F] = {
+    def withHandler(
+        handler: commands.ComponentInteractionHandler[F]
+    ): RouterMocks[F] = {
       copy(handlers = handlers :+ handler)
     }
   }
@@ -159,29 +172,36 @@ object MockFixtures extends Smockito {
     }
   }
 
-  /**
-   * Mock fixture for Command tests (e.g., PlayCommand)
-   */
+  /** Mock fixture for Command tests (e.g., PlayCommand)
+    */
   case class CommandMocks[F[_]: Async](
-    voiceManager: Mock[VoiceManager[F]],
-    trackExtractor: Mock[TrackExtractor[F]],
-    youtubeSearch: Mock[YouTubeSearchClient[F]],
-    guildSettings: Mock[GuildSettingsManager[F]]
+      voiceManager: Mock[VoiceManager[F]],
+      trackExtractor: Mock[TrackExtractor[F]],
+      youtubeSearch: Mock[YouTubeSearchClient[F]],
+      guildSettings: Mock[GuildSettingsManager[F]]
   ) {
 
-    def createPlayCommand()(using org.typelevel.log4cats.Logger[F]): commands.PlayCommand[F] = {
+    def createPlayCommand()(using
+        org.typelevel.log4cats.Logger[F]
+    ): commands.PlayCommand[F] = {
       new commands.PlayCommand[F](voiceManager, trackExtractor)
     }
 
-    def createSearchCommand()(using org.typelevel.log4cats.Logger[F]): commands.SearchCommand[F] = {
+    def createSearchCommand()(using
+        org.typelevel.log4cats.Logger[F]
+    ): commands.SearchCommand[F] = {
       new commands.SearchCommand[F](voiceManager, youtubeSearch)
     }
 
-    def createStopCommand()(using org.typelevel.log4cats.Logger[F]): commands.StopCommand[F] = {
+    def createStopCommand()(using
+        org.typelevel.log4cats.Logger[F]
+    ): commands.StopCommand[F] = {
       new commands.StopCommand[F](voiceManager)
     }
 
-    def createSkipCommand()(using org.typelevel.log4cats.Logger[F]): commands.SkipCommand[F] = {
+    def createSkipCommand()(using
+        org.typelevel.log4cats.Logger[F]
+    ): commands.SkipCommand[F] = {
       new commands.SkipCommand[F](voiceManager)
     }
   }
@@ -197,63 +217,63 @@ object MockFixtures extends Smockito {
     }
   }
 
-  /**
-   * Common mock setup utilities
-   */
+  /** Common mock setup utilities
+    */
   object Setups {
 
     /** Setup VoiceManager with a default queue */
     def withQueue[F[_]](
-      voiceManager: Mock[VoiceManager[F]],
-      guildId: String,
-      queue: MusicQueue
-    ): Mock[VoiceManager[F]] = {
-      voiceManager.on(it.getQueue)(_ => IO.pure(queue).asInstanceOf[F[MusicQueue]])
-      voiceManager
-    }
+        voiceManager: Mock[VoiceManager[F]],
+        guildId: String,
+        queue: MusicQueue
+    ): Mock[VoiceManager[F]] =
+      voiceManager.on(it.getQueue)(_ =>
+        IO.pure(queue).asInstanceOf[F[MusicQueue]]
+      )
 
     /** Setup GuildSettings with default volume */
     def withVolume[F[_]](
-      guildSettings: Mock[GuildSettingsManager[F]],
-      guildId: String,
-      volume: Double
-    ): Mock[GuildSettingsManager[F]] = {
+        guildSettings: Mock[GuildSettingsManager[F]],
+        guildId: String,
+        volume: Double
+    ): Mock[GuildSettingsManager[F]] =
       guildSettings
         .on(it.getVolume)(_ => IO.pure(volume).asInstanceOf[F[Double]])
         .on(it.setVolume)((_, _) => IO.unit.asInstanceOf[F[Unit]])
-      guildSettings
-    }
 
     /** Setup DiscordApi to accept any interaction response */
     def withDiscordApi[F[_]](
-      discordApi: Mock[DiscordApiClient[F]]
-    ): Mock[DiscordApiClient[F]] = {
+        discordApi: Mock[DiscordApiClient[F]]
+    ): Mock[DiscordApiClient[F]] =
       discordApi
-        .on(it.sendInteractionResponse)((_, _, _) => IO.unit.asInstanceOf[F[Unit]])
-        .on(it.editInteractionResponse)((_, _, _) => IO.unit.asInstanceOf[F[Unit]])
-      discordApi
-    }
+        .on(it.sendInteractionResponse)((_, _, _) =>
+          IO.unit.asInstanceOf[F[Unit]]
+        )
+        .on(it.editInteractionResponse)((_, _, _) =>
+          IO.unit.asInstanceOf[F[Unit]]
+        )
 
     /** Setup VoiceManager with search results */
     def withSearchResults[F[_]](
-      voiceManager: Mock[VoiceManager[F]],
-      userId: String,
-      results: List[music.YouTubeSearchResult]
-    ): Mock[VoiceManager[F]] = {
+        voiceManager: Mock[VoiceManager[F]],
+        userId: String,
+        results: List[music.YouTubeSearchResult]
+    ): Mock[VoiceManager[F]] =
       voiceManager
-        .on(it.getSearchResults)(_ => IO.pure(Some(results)).asInstanceOf[F[Option[List[music.YouTubeSearchResult]]]])
+        .on(it.getSearchResults)(_ =>
+          IO.pure(Some(results))
+            .asInstanceOf[F[Option[List[music.YouTubeSearchResult]]]]
+        )
         .on(it.clearSearchResults)(_ => IO.unit.asInstanceOf[F[Unit]])
-      voiceManager
-    }
 
     /** Setup TrackExtractor to return a track */
     def withTrackExtraction[F[_]](
-      trackExtractor: Mock[TrackExtractor[F]],
-      url: String,
-      track: Option[MusicTrack]
-    ): Mock[TrackExtractor[F]] = {
-      trackExtractor.on(it.extractTrackInfo)(_ => IO.pure(track).asInstanceOf[F[Option[MusicTrack]]])
-      trackExtractor
-    }
+        trackExtractor: Mock[TrackExtractor[F]],
+        url: String,
+        track: Option[MusicTrack]
+    ): Mock[TrackExtractor[F]] =
+      trackExtractor.on(it.extractTrackInfo)(_ =>
+        IO.pure(track).asInstanceOf[F[Option[MusicTrack]]]
+      )
   }
 }

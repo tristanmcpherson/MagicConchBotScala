@@ -6,16 +6,18 @@ import dev.raegous.magicconch.music.YouTubeSearchResult
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.noop.NoOpLogger
 
-/**
- * Common test fixtures and utilities for unit tests
- */
+/** Common test fixtures and utilities for unit tests
+  */
 object TestFixtures {
 
   // No-op logger for tests
   given testLogger[F[_]: Sync]: Logger[F] = NoOpLogger[F]
 
   // Sample Discord models for testing
-  def sampleUser(id: String = "123456789", username: String = "testuser"): User = {
+  def sampleUser(
+      id: String = "123456789",
+      username: String = "testuser"
+  ): User = {
     User(
       id = id,
       username = username,
@@ -26,7 +28,10 @@ object TestFixtures {
     )
   }
 
-  def sampleGuildMember(userId: String = "123456789", username: String = "testuser"): GuildMember = {
+  def sampleGuildMember(
+      userId: String = "123456789",
+      username: String = "testuser"
+  ): GuildMember = {
     GuildMember(
       user = Some(sampleUser(userId, username)),
       nick = None,
@@ -36,10 +41,10 @@ object TestFixtures {
   }
 
   def sampleInteraction(
-    id: String = "interaction_123",
-    customId: Option[String] = None,
-    guildId: Option[String] = Some("guild_123"),
-    userId: String = "123456789"
+      id: String = "interaction_123",
+      customId: Option[String] = None,
+      guildId: Option[String] = Some("guild_123"),
+      userId: String = "123456789"
   ): Interaction = {
     Interaction(
       id = id,
@@ -54,9 +59,9 @@ object TestFixtures {
   }
 
   def sampleMusicTrack(
-    url: String = "https://youtube.com/watch?v=test",
-    title: String = "Test Song",
-    requestedBy: String = "testuser"
+      url: String = "https://youtube.com/watch?v=test",
+      title: String = "Test Song",
+      requestedBy: String = "testuser"
   ): MusicTrack = {
     MusicTrack(
       url = url,
@@ -67,9 +72,9 @@ object TestFixtures {
   }
 
   def sampleYouTubeSearchResult(
-    videoId: String = "test_video",
-    title: String = "Test Video",
-    channelTitle: String = "Test Channel"
+      videoId: String = "test_video",
+      title: String = "Test Video",
+      channelTitle: String = "Test Channel"
   ): YouTubeSearchResult = {
     YouTubeSearchResult(
       videoId = videoId,
@@ -81,9 +86,9 @@ object TestFixtures {
   }
 
   def sampleMusicQueue(
-    tracks: List[MusicTrack] = List.empty,
-    currentTrack: Option[MusicTrack] = None,
-    isPlaying: Boolean = false
+      tracks: List[MusicTrack] = List.empty,
+      currentTrack: Option[MusicTrack] = None,
+      isPlaying: Boolean = false
   ): MusicQueue = {
     MusicQueue(
       tracks = tracks,
@@ -97,17 +102,17 @@ object TestFixtures {
   }
 
   def sampleGatewayPayload(
-    op: Int,
-    d: Option[io.circe.Json] = None,
-    s: Option[Int] = None,
-    t: Option[String] = None
+      op: Int,
+      d: Option[io.circe.Json] = None,
+      s: Option[Int] = None,
+      t: Option[String] = None
   ): GatewayPayload = {
     GatewayPayload(op = op, d = d, s = s, t = t)
   }
 
   def sampleReadyPayload(
-    userId: String = "bot_user_123",
-    username: String = "TestBot"
+      userId: String = "bot_user_123",
+      username: String = "TestBot"
   ): ReadyPayload = {
     ReadyPayload(
       user = sampleUser(userId, username),
@@ -120,9 +125,9 @@ object TestFixtures {
   }
 
   def sampleGuildCreate(
-    id: String = "guild_123",
-    name: String = "Test Guild",
-    memberCount: Int = 100
+      id: String = "guild_123",
+      name: String = "Test Guild",
+      memberCount: Int = 100
   ): GuildCreate = {
     GuildCreate(
       id = id,
@@ -157,10 +162,10 @@ object TestFixtures {
   }
 
   def sampleDiscordMessage(
-    id: String = "message_123",
-    content: String = "!test command",
-    authorId: String = "user_123",
-    isBot: Boolean = false
+      id: String = "message_123",
+      content: String = "!test command",
+      authorId: String = "user_123",
+      isBot: Boolean = false
   ): DiscordMessage = {
     DiscordMessage(
       id = id,

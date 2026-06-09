@@ -73,7 +73,8 @@ case class IdentifyPayload(
 )
 
 case class VoiceStateUpdate(
-    guild_id: Option[String] = None,  // Optional: present in VOICE_STATE_UPDATE events, absent in GUILD_CREATE.voice_states
+    guild_id: Option[String] =
+      None, // Optional: present in VOICE_STATE_UPDATE events, absent in GUILD_CREATE.voice_states
     channel_id: Option[String],
     user_id: String,
     session_id: String,
@@ -118,31 +119,32 @@ case class MusicQueue(
     tracks: List[MusicTrack],
     currentTrack: Option[MusicTrack],
     isPlaying: Boolean,
-    isPaused: Boolean = false,  // Track if playback is paused
-    currentPosition: Int = 0,  // Current playback position in seconds
-    startTime: Option[Long] = None,  // Epoch milliseconds when playback started
-    pauseTime: Option[Long] = None  // Epoch milliseconds when playback was paused
+    isPaused: Boolean = false, // Track if playback is paused
+    currentPosition: Int = 0, // Current playback position in seconds
+    startTime: Option[Long] = None, // Epoch milliseconds when playback started
+    pauseTime: Option[Long] =
+      None // Epoch milliseconds when playback was paused
 )
 
 case class SlashCommand(
-  id: String,
-  application_id: String,
-  version: String,
-  default_member_permissions: Option[String],
-  `type`: Int,
-  name: String,
-  description: String,
-  guild_id: String,
-  nsfw: Boolean,
-  options: Option[List[SlashCommandOption]] = None
+    id: String,
+    application_id: String,
+    version: String,
+    default_member_permissions: Option[String],
+    `type`: Int,
+    name: String,
+    description: String,
+    guild_id: String,
+    nsfw: Boolean,
+    options: Option[List[SlashCommandOption]] = None
 )
 
 case class SlashCommandOption(
-  `type`: Int,
-  name: String,
-  description: String,
-  required: Option[Boolean],
-  options: Option[Seq[SlashCommandOptionOption]]
+    `type`: Int,
+    name: String,
+    description: String,
+    required: Option[Boolean],
+    options: Option[Seq[SlashCommandOptionOption]]
 )
 
 case class SlashCommandOptionOption(
@@ -184,13 +186,14 @@ case class EmbedField(
 case class EmbedThumbnail(url: String)
 
 case class MessageComponent(
-    `type`: Int,  // 1 = Action Row, 2 = Button, 3 = Select Menu
-    components: Option[List[MessageComponent]] = None,  // For Action Row
-    style: Option[Int] = None,  // For Button: 1=Primary, 2=Secondary, 3=Success, 4=Danger, 5=Link
-    label: Option[String] = None,  // Button label
-    custom_id: Option[String] = None,  // Identifier for handling interactions
-    url: Option[String] = None,  // For Link-style buttons
-    id: Option[Int] = None,  // Discord-assigned ID for components in messages
+    `type`: Int, // 1 = Action Row, 2 = Button, 3 = Select Menu
+    components: Option[List[MessageComponent]] = None, // For Action Row
+    style: Option[Int] =
+      None, // For Button: 1=Primary, 2=Secondary, 3=Success, 4=Danger, 5=Link
+    label: Option[String] = None, // Button label
+    custom_id: Option[String] = None, // Identifier for handling interactions
+    url: Option[String] = None, // For Link-style buttons
+    id: Option[Int] = None, // Discord-assigned ID for components in messages
     disabled: Option[Boolean] = None
 )
 
@@ -223,12 +226,13 @@ case class Interaction(
 )
 
 case class InteractionData(
-    id: Option[io.circe.Json] = None,  // Can be String (for slash commands) or Int (for components)
-    name: Option[String] = None,  // Only for slash commands
-    `type`: Option[Int] = None,  // Only for slash commands
+    id: Option[io.circe.Json] =
+      None, // Can be String (for slash commands) or Int (for components)
+    name: Option[String] = None, // Only for slash commands
+    `type`: Option[Int] = None, // Only for slash commands
     options: Option[List[InteractionOption]] = None,
-    custom_id: Option[String] = None,  // For MESSAGE_COMPONENT interactions
-    component_type: Option[Int] = None  // For MESSAGE_COMPONENT interactions
+    custom_id: Option[String] = None, // For MESSAGE_COMPONENT interactions
+    component_type: Option[Int] = None // For MESSAGE_COMPONENT interactions
 )
 
 case class InteractionOption(
@@ -258,19 +262,20 @@ case class GuildMember(
 
 enum EncryptionMode(val value: String) {
   case AeadAes256GcmRtpSize extends EncryptionMode("aead_aes256_gcm_rtpsize")
-  case AeadXChaCha20Poly1305RtpSize extends EncryptionMode("aead_xchacha20_poly1305_rtpsize")
+  case AeadXChaCha20Poly1305RtpSize
+      extends EncryptionMode("aead_xchacha20_poly1305_rtpsize")
 }
 
 object EncryptionMode {
   def fromString(s: String): Option[EncryptionMode] = s match {
-    case "aead_aes256_gcm_rtpsize" => Some(AeadAes256GcmRtpSize)
+    case "aead_aes256_gcm_rtpsize"         => Some(AeadAes256GcmRtpSize)
     case "aead_xchacha20_poly1305_rtpsize" => Some(AeadXChaCha20Poly1305RtpSize)
-    case _ => None
+    case _                                 => None
   }
 
   // Preferred modes in priority order
   val preferredModes: List[EncryptionMode] = List(
-    AeadAes256GcmRtpSize,        // Preferred by Discord when offered; hardware accelerated on modern CPUs
+    AeadAes256GcmRtpSize, // Preferred by Discord when offered; hardware accelerated on modern CPUs
     AeadXChaCha20Poly1305RtpSize // Required fallback mode
   )
 }
@@ -343,93 +348,94 @@ case class GuildCreate(
 )
 
 object DiscordIntents {
-  val GUILDS = 1 << 0                    // 1
-  val GUILD_MEMBERS = 1 << 1             // 2  
-  val GUILD_MODERATION = 1 << 2          // 4
+  val GUILDS = 1 << 0 // 1
+  val GUILD_MEMBERS = 1 << 1 // 2
+  val GUILD_MODERATION = 1 << 2 // 4
   val GUILD_EMOJIS_AND_STICKERS = 1 << 3 // 8
-  val GUILD_INTEGRATIONS = 1 << 4        // 16
-  val GUILD_WEBHOOKS = 1 << 5            // 32
-  val GUILD_INVITES = 1 << 6             // 64
-  val GUILD_VOICE_STATES = 1 << 7        // 128
-  val GUILD_PRESENCES = 1 << 8           // 256
-  val GUILD_MESSAGES = 1 << 9            // 512
-  val GUILD_MESSAGE_REACTIONS = 1 << 10  // 1024
-  val GUILD_MESSAGE_TYPING = 1 << 11     // 2048
-  val DIRECT_MESSAGES = 1 << 12          // 4096
+  val GUILD_INTEGRATIONS = 1 << 4 // 16
+  val GUILD_WEBHOOKS = 1 << 5 // 32
+  val GUILD_INVITES = 1 << 6 // 64
+  val GUILD_VOICE_STATES = 1 << 7 // 128
+  val GUILD_PRESENCES = 1 << 8 // 256
+  val GUILD_MESSAGES = 1 << 9 // 512
+  val GUILD_MESSAGE_REACTIONS = 1 << 10 // 1024
+  val GUILD_MESSAGE_TYPING = 1 << 11 // 2048
+  val DIRECT_MESSAGES = 1 << 12 // 4096
   val DIRECT_MESSAGE_REACTIONS = 1 << 13 // 8192
-  val DIRECT_MESSAGE_TYPING = 1 << 14    // 16384
-  val MESSAGE_CONTENT = 1 << 15          // 32768
-  val GUILD_SCHEDULED_EVENTS = 1 << 16   // 65536
+  val DIRECT_MESSAGE_TYPING = 1 << 14 // 16384
+  val MESSAGE_CONTENT = 1 << 15 // 32768
+  val GUILD_SCHEDULED_EVENTS = 1 << 16 // 65536
   val AUTO_MODERATION_CONFIGURATION = 1 << 20 // 1048576
-  val AUTO_MODERATION_EXECUTION = 1 << 21     // 2097152
-  
-  val BOT_DEFAULT = GUILDS | GUILD_MESSAGES | MESSAGE_CONTENT | GUILD_VOICE_STATES
+  val AUTO_MODERATION_EXECUTION = 1 << 21 // 2097152
+
+  val BOT_DEFAULT =
+    GUILDS | GUILD_MESSAGES | MESSAGE_CONTENT | GUILD_VOICE_STATES
 }
 
 object DiscordModels {
   given Decoder[DiscordMessage] = deriveDecoder
   given Encoder[DiscordMessage] = deriveEncoder
-  
+
   given Decoder[User] = deriveDecoder
   given Encoder[User] = deriveEncoder
-  
+
   given Decoder[GatewayPayload] = deriveDecoder
   given Encoder[GatewayPayload] = deriveEncoder
-  
+
   given Decoder[HelloPayload] = deriveDecoder
   given Encoder[HelloPayload] = deriveEncoder
-  
+
   given Decoder[ReadyPayload] = deriveDecoder
   given Encoder[ReadyPayload] = deriveEncoder
-  
+
   given Decoder[IdentifyPayload] = deriveDecoder
   given Encoder[IdentifyPayload] = deriveEncoder
-  
+
   given Decoder[Attachment] = deriveDecoder
   given Encoder[Attachment] = deriveEncoder
-  
+
   given Decoder[VoiceStateUpdate] = deriveDecoder
   given Encoder[VoiceStateUpdate] = deriveEncoder
-  
+
   given Decoder[VoiceServerUpdate] = deriveDecoder
   given Encoder[VoiceServerUpdate] = deriveEncoder
-  
+
   given Decoder[VoiceIdentify] = deriveDecoder
   given Encoder[VoiceIdentify] = deriveEncoder
-  
+
   given Decoder[BotVoiceState] = deriveDecoder
   given Encoder[BotVoiceState] = deriveEncoder
-  
+
   given Decoder[MusicTrack] = deriveDecoder
   given Encoder[MusicTrack] = deriveEncoder
-  
+
   given Decoder[MusicQueue] = deriveDecoder
   given Encoder[MusicQueue] = deriveEncoder
-  
+
   given Decoder[SlashCommand] = deriveDecoder
   given Encoder[SlashCommand] = deriveEncoder
-  
+
   given Decoder[SlashCommandOption] = deriveDecoder
   given Encoder[SlashCommandOption] = deriveEncoder
 
   given Decoder[SlashCommandOptionOption] = deriveDecoder
   given Encoder[SlashCommandOptionOption] = deriveEncoder
-  
+
   given Decoder[InteractionResponse] = deriveDecoder
   given Encoder[InteractionResponse] = deriveEncoder
-  
+
   given Decoder[InteractionResponseData] = deriveDecoder
   given Encoder[InteractionResponseData] = deriveEncoder
-  
+
   given Decoder[Interaction] = deriveDecoder
   given Encoder[Interaction] = deriveEncoder
-  
+
   given Decoder[InteractionData] = deriveDecoder
   given Encoder[InteractionData] = deriveEncoder
-  
+
   given Decoder[InteractionOption] = deriveDecoder
   given Encoder[InteractionOption] = deriveEncoder
-  
+
   given Decoder[GuildMember] = deriveDecoder
   given Encoder[GuildMember] = deriveEncoder
 

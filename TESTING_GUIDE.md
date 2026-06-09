@@ -413,7 +413,7 @@ test("should handle async operations") {
   val handler = mocks.createHandler()
 
   handler.handle(customId, interaction, None).map { _ =>
-    verify(mocks.voiceManager).addToQueue(any, any)
+    assertEquals(mocks.voiceManager.times(it.addToQueue), 1)
   }
 }
 ```
@@ -442,14 +442,19 @@ If you get type errors, use explicit `.asInstanceOf[F[T]]`:
 mock.on(it.myMethod)(_ => IO.pure(value).asInstanceOf[F[ValueType]])
 ```
 
-### Verification failures
+### Checking mock interactions
 
-Remember to use `any[Type]` for arguments you don't care about:
+Use Smockito's `calls` when you care about arguments:
 
 ```scala
-verify(mocks.discordApi).sendInteractionResponse(
-  any[String],  // interaction ID
-  any[String],  // token
-  any[String]   // response JSON
+assertEquals(
+  mocks.guildSettings.calls(it.setVolume).head,
+  ("guild123", 0.75)
 )
+```
+
+Use `times` when you only care that a method was called:
+
+```scala
+assertEquals(mocks.discordApi.times(it.sendInteractionResponse), 1)
 ```

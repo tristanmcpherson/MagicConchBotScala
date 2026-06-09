@@ -9,36 +9,42 @@ import org.http4s.circe.*
 import org.http4s.client.Client
 import org.typelevel.log4cats.Logger
 
-/**
- * YouTube Data API v3 client for searching videos.
- *
- * API Documentation: https://developers.google.com/youtube/v3/docs/search/list
- *
- * Required API Key: Get from https://console.cloud.google.com/
- * Enable "YouTube Data API v3" in your Google Cloud project
- */
+/** YouTube Data API v3 client for searching videos.
+  *
+  * API Documentation: https://developers.google.com/youtube/v3/docs/search/list
+  *
+  * Required API Key: Get from https://console.cloud.google.com/ Enable "YouTube
+  * Data API v3" in your Google Cloud project
+  */
 class YouTubeSearchClient[F[_]: Async](
-  apiKey: String,
-  httpClient: Client[F]
+    apiKey: String,
+    httpClient: Client[F]
 )(using Logger[F]) {
 
   private val baseUrl = "https://www.googleapis.com/youtube/v3"
 
-  /**
-   * Search YouTube videos by query string.
-   *
-   * @param query Search terms
-   * @param maxResults Number of results to return (1-50, default 5)
-   * @return List of search results
-   */
-  def search(query: String, maxResults: Int = 5): F[List[YouTubeSearchResult]] = {
+  /** Search YouTube videos by query string.
+    *
+    * @param query
+    *   Search terms
+    * @param maxResults
+    *   Number of results to return (1-50, default 5)
+    * @return
+    *   List of search results
+    */
+  def search(
+      query: String,
+      maxResults: Int = 5
+  ): F[List[YouTubeSearchResult]] = {
     val uri = Uri.unsafeFromString(
       s"$baseUrl/search?part=snippet&type=video&q=${Uri.encode(query)}&maxResults=$maxResults&key=$apiKey"
     )
 
     for {
       _ <- Logger[F].debug(s"[YOUTUBE] Searching: $query")
-      response <- httpClient.expect[YouTubeSearchResponse](uri)(jsonOf[F, YouTubeSearchResponse])
+      response <- httpClient.expect[YouTubeSearchResponse](uri)(
+        jsonOf[F, YouTubeSearchResponse]
+      )
       _ <- Logger[F].debug(s"[YOUTUBE] Found ${response.items.length} results")
     } yield response.items.map(item =>
       YouTubeSearchResult(
@@ -56,16 +62,16 @@ class YouTubeSearchClient[F[_]: Async](
 case class YouTubeSearchResponse(items: List[YouTubeSearchItem])
 
 case class YouTubeSearchItem(
-  id: YouTubeVideoId,
-  snippet: YouTubeSnippet
+    id: YouTubeVideoId,
+    snippet: YouTubeSnippet
 )
 
 case class YouTubeVideoId(videoId: String)
 
 case class YouTubeSnippet(
-  title: String,
-  channelTitle: String,
-  thumbnails: YouTubeThumbnails
+    title: String,
+    channelTitle: String,
+    thumbnails: YouTubeThumbnails
 )
 
 case class YouTubeThumbnails(default: YouTubeThumbnail)
@@ -74,11 +80,11 @@ case class YouTubeThumbnail(url: String)
 
 // User-facing result model
 case class YouTubeSearchResult(
-  videoId: String,
-  title: String,
-  channelTitle: String,
-  thumbnail: String,
-  url: String
+    videoId: String,
+    title: String,
+    channelTitle: String,
+    thumbnail: String,
+    url: String
 )
 
 object YouTubeSearchResult {

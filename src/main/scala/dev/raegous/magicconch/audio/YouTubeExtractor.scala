@@ -10,11 +10,10 @@ import fs2.io.process.{ProcessBuilder, Processes}
 import io.circe.parser.*
 import io.circe.Json
 
-/**
- * Generic extractor using yt-dlp for all supported sources
- * Supports YouTube, SoundCloud, Bandcamp, and many other platforms
- * See: https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md
- */
+/** Generic extractor using yt-dlp for all supported sources Supports YouTube,
+  * SoundCloud, Bandcamp, and many other platforms See:
+  * https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md
+  */
 class YtDlpExtractor[F[_]: Async: Processes](using Logger[F]) {
 
   def extractTrackInfo(url: String): F[Option[MusicTrack]] = {
@@ -25,7 +24,8 @@ class YtDlpExtractor[F[_]: Async: Processes](using Logger[F]) {
     val ytDlpCommand = List(
       "yt-dlp",
       "--get-url",
-      "--format", "bestaudio[ext=opus]/bestaudio[ext=webm]/bestaudio",
+      "--format",
+      "bestaudio[ext=opus]/bestaudio[ext=webm]/bestaudio",
       url
     )
 
@@ -33,10 +33,10 @@ class YtDlpExtractor[F[_]: Async: Processes](using Logger[F]) {
       case Some(output) =>
         val streamUrl = output.trim
         Logger[F].info("Extracted audio stream URL") >>
-        Async[F].pure(Some(streamUrl))
+          Async[F].pure(Some(streamUrl))
       case None =>
         Logger[F].error(s"Failed to extract audio stream URL from: $url") >>
-        Async[F].pure(None)
+          Async[F].pure(None)
     }
   }
 
@@ -53,11 +53,14 @@ class YtDlpExtractor[F[_]: Async: Processes](using Logger[F]) {
         parseTrackInfo(jsonOutput, url)
       case None =>
         Logger[F].error(s"Failed to extract info from URL: $url") >>
-        Async[F].pure(None)
+          Async[F].pure(None)
     }
   }
 
-  private def parseTrackInfo(jsonOutput: String, originalUrl: String): F[Option[MusicTrack]] = {
+  private def parseTrackInfo(
+      jsonOutput: String,
+      originalUrl: String
+  ): F[Option[MusicTrack]] = {
     parse(jsonOutput) match {
       case Right(json) =>
         val title = json.hcursor.get[String]("title").getOrElse("Unknown Title")
@@ -68,11 +71,13 @@ class YtDlpExtractor[F[_]: Async: Processes](using Logger[F]) {
           duration = duration,
           requestedBy = "system"
         )
-        Logger[F].info(s"Extracted track info: $title (${duration.map(_ + "s").getOrElse("unknown duration")})") >>
-        Async[F].pure(Some(track))
+        Logger[F].info(
+          s"Extracted track info: $title (${duration.map(_ + "s").getOrElse("unknown duration")})"
+        ) >>
+          Async[F].pure(Some(track))
       case Left(error) =>
         Logger[F].error(s"Failed to parse yt-dlp JSON output: $error") >>
-        Async[F].pure(None)
+          Async[F].pure(None)
     }
   }
 
@@ -83,15 +88,21 @@ class YtDlpExtractor[F[_]: Async: Processes](using Logger[F]) {
         for {
           output <- process.stdout.through(fs2.text.utf8.decode).compile.string
           exitCode <- process.exitValue
-          result <- Option.when(exitCode == 0)(Async[F].pure(output.some)).getOrElse(
-            Logger[F].error(s"Command failed with exit code $exitCode: ${command.mkString(" ")}") >>
-            Async[F].pure(none[String])
-          )
+          result <- Option
+            .when(exitCode == 0)(Async[F].pure(output.some))
+            .getOrElse(
+              Logger[F].error(
+                s"Command failed with exit code $exitCode: ${command.mkString(" ")}"
+              ) >>
+                Async[F].pure(none[String])
+            )
         } yield result
       }
       .handleErrorWith { error =>
-        Logger[F].error(s"Error running command: ${command.mkString(" ")} - $error") >>
-        Async[F].pure(None)
+        Logger[F].error(
+          s"Error running command: ${command.mkString(" ")} - $error"
+        ) >>
+          Async[F].pure(None)
       }
   }
 
@@ -107,10 +118,12 @@ class YtDlpExtractor[F[_]: Async: Processes](using Logger[F]) {
       case Some(output) =>
         val urls = output.split("\n").filter(_.trim.nonEmpty).toList
         Logger[F].info(s"Extracted ${urls.length} URLs from playlist") >>
-        Async[F].pure(urls)
+          Async[F].pure(urls)
       case None =>
-        Logger[F].error(s"Failed to extract playlist URLs from: $playlistUrl") >>
-        Async[F].pure(List.empty)
+        Logger[F].error(
+          s"Failed to extract playlist URLs from: $playlistUrl"
+        ) >>
+          Async[F].pure(List.empty)
     }
   }
 }
