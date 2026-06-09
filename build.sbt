@@ -1,6 +1,6 @@
 ThisBuild / version := "0.1.0-SNAPSHOT"
 
-ThisBuild / scalaVersion := "3.3.0"
+ThisBuild / scalaVersion := "3.3.7"
 
 ThisBuild / javaHome := {
   val candidates = Seq(
@@ -51,6 +51,6 @@ lazy val root = (project in file("."))
       "org.scalameta" %% "munit" % "1.0.0" % Test,
       "org.typelevel" %% "munit-cats-effect" % "2.1.0" % Test,
       "net.java.dev.jna" % "jna-platform" % "5.13.0" % Test,
-      "com.bdmendes" %% "smockito" % "2.2.1" % Test,
+      "com.bdmendes" %% "smockito" % "2.7.3" % Test,
     )
   )
