@@ -7,15 +7,11 @@ import dev.raegous.magicconch.commands.CommandRegistry
 import dev.raegous.magicconch.MockFixtures.*
 import munit.CatsEffectSuite
 import com.bdmendes.smockito.*
-import com.bdmendes.smockito.given
-import com.bdmendes.smockito.MockedMethod.given
 import dev.raegous.magicconch.audio.VoiceManager
 import dev.raegous.magicconch.discord.DiscordModels.*
 import dev.raegous.magicconch.discord.DiscordModels.given
 import dev.raegous.magicconch.guilds.{GuildSettingsManager, GuildTracker}
 import dev.raegous.magicconch.music.TrackExtractor
-import org.mockito.ArgumentMatchers.any
-import org.mockito.Mockito.{times, verify}
 import sttp.ws.WebSocket
 import io.circe.syntax.*
 

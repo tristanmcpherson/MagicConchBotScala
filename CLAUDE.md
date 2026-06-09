@@ -42,7 +42,7 @@
 
   - Use .on(it.methodName) syntax correctly
 
-  - Avoid verify() calls that cause type inference issues
+  - Avoid raw Mockito verification calls; prefer Smockito calls(...) and times(...)
 
 
 
@@ -57,4 +57,3 @@
   - Always check imports when refactoring - linters may auto-fix package locations
 
   - Use MCP tools for compilation/testing, NOT coursier/sbt directly
-

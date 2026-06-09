@@ -226,29 +226,25 @@ object MockFixtures extends Smockito {
         voiceManager: Mock[VoiceManager[F]],
         guildId: String,
         queue: MusicQueue
-    ): Mock[VoiceManager[F]] = {
+    ): Mock[VoiceManager[F]] =
       voiceManager.on(it.getQueue)(_ =>
         IO.pure(queue).asInstanceOf[F[MusicQueue]]
       )
-      voiceManager
-    }
 
     /** Setup GuildSettings with default volume */
     def withVolume[F[_]](
         guildSettings: Mock[GuildSettingsManager[F]],
         guildId: String,
         volume: Double
-    ): Mock[GuildSettingsManager[F]] = {
+    ): Mock[GuildSettingsManager[F]] =
       guildSettings
         .on(it.getVolume)(_ => IO.pure(volume).asInstanceOf[F[Double]])
         .on(it.setVolume)((_, _) => IO.unit.asInstanceOf[F[Unit]])
-      guildSettings
-    }
 
     /** Setup DiscordApi to accept any interaction response */
     def withDiscordApi[F[_]](
         discordApi: Mock[DiscordApiClient[F]]
-    ): Mock[DiscordApiClient[F]] = {
+    ): Mock[DiscordApiClient[F]] =
       discordApi
         .on(it.sendInteractionResponse)((_, _, _) =>
           IO.unit.asInstanceOf[F[Unit]]
@@ -256,34 +252,28 @@ object MockFixtures extends Smockito {
         .on(it.editInteractionResponse)((_, _, _) =>
           IO.unit.asInstanceOf[F[Unit]]
         )
-      discordApi
-    }
 
     /** Setup VoiceManager with search results */
     def withSearchResults[F[_]](
         voiceManager: Mock[VoiceManager[F]],
         userId: String,
         results: List[music.YouTubeSearchResult]
-    ): Mock[VoiceManager[F]] = {
+    ): Mock[VoiceManager[F]] =
       voiceManager
         .on(it.getSearchResults)(_ =>
           IO.pure(Some(results))
             .asInstanceOf[F[Option[List[music.YouTubeSearchResult]]]]
         )
         .on(it.clearSearchResults)(_ => IO.unit.asInstanceOf[F[Unit]])
-      voiceManager
-    }
 
     /** Setup TrackExtractor to return a track */
     def withTrackExtraction[F[_]](
         trackExtractor: Mock[TrackExtractor[F]],
         url: String,
         track: Option[MusicTrack]
-    ): Mock[TrackExtractor[F]] = {
+    ): Mock[TrackExtractor[F]] =
       trackExtractor.on(it.extractTrackInfo)(_ =>
         IO.pure(track).asInstanceOf[F[Option[MusicTrack]]]
       )
-      trackExtractor
-    }
   }
 }

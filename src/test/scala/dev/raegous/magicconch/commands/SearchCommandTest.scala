@@ -3,15 +3,12 @@ package dev.raegous.magicconch.commands
 import cats.effect.*
 import cats.effect.unsafe.implicits.global
 import com.bdmendes.smockito.*
-import com.bdmendes.smockito.given
 import dev.raegous.magicconch.*
 import dev.raegous.magicconch.MockFixtures.*
 import dev.raegous.magicconch.TestFixtures.{testLogger, *}
 import dev.raegous.magicconch.discord.{MusicQueue, MusicTrack}
 import dev.raegous.magicconch.music.*
 import munit.CatsEffectSuite
-import org.mockito.ArgumentMatchers.any
-import org.mockito.Mockito.verify
 
 class SearchCommandTest extends CatsEffectSuite, Smockito {
   test("SearchCommand should have correct metadata") {
@@ -132,7 +129,10 @@ class SearchCommandTest extends CatsEffectSuite, Smockito {
       )
 
       // Verify that results were stored
-      verify(mocks.voiceManager).storeSearchResults("user123", searchResults)
+      assertEquals(
+        mocks.voiceManager.calls(it.storeSearchResults).head,
+        ("user123", searchResults)
+      )
     }
   }
 
