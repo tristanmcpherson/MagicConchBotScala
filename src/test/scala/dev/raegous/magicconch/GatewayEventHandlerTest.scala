@@ -52,7 +52,9 @@ class GatewayEventHandlerTest extends CatsEffectSuite, Smockito {
     }
   }
 
-  test("handlePayload should handle Heartbeat Request (opcode 1) and send heartbeat") {
+  test(
+    "handlePayload should handle Heartbeat Request (opcode 1) and send heartbeat"
+  ) {
     val mocks = GatewayMocks[IO]()
     val ws = mock[WebSocket[IO]]
 
@@ -68,7 +70,9 @@ class GatewayEventHandlerTest extends CatsEffectSuite, Smockito {
     }
   }
 
-  test("handlePayload should handle Invalid Session (opcode 9) and raise error") {
+  test(
+    "handlePayload should handle Invalid Session (opcode 9) and raise error"
+  ) {
     val mocks = GatewayMocks[IO]()
     val ws = mock[WebSocket[IO]]
 
@@ -141,7 +145,9 @@ class GatewayEventHandlerTest extends CatsEffectSuite, Smockito {
     }
   }
 
-  test("handleDispatchEvent should handle MESSAGE_CREATE event and delegate to messageHandler") {
+  test(
+    "handleDispatchEvent should handle MESSAGE_CREATE event and delegate to messageHandler"
+  ) {
     val mocks = GatewayMocks[IO]()
     val ws = mock[WebSocket[IO]]
 
@@ -170,7 +176,8 @@ class GatewayEventHandlerTest extends CatsEffectSuite, Smockito {
     mocks.messageHandler
       .on(it.handleMessage)((_, _) => IO.unit)
 
-    val botMessage = sampleDiscordMessage(content = "Bot response", isBot = true)
+    val botMessage =
+      sampleDiscordMessage(content = "Bot response", isBot = true)
     val payload = sampleGatewayPayload(
       op = 0,
       d = Some(botMessage.asJson),
@@ -185,7 +192,9 @@ class GatewayEventHandlerTest extends CatsEffectSuite, Smockito {
     }
   }
 
-  test("handleDispatchEvent should handle INTERACTION_CREATE for slash commands") {
+  test(
+    "handleDispatchEvent should handle INTERACTION_CREATE for slash commands"
+  ) {
     val mocks = GatewayMocks[IO]()
     val ws = mock[WebSocket[IO]]
 
@@ -215,7 +224,9 @@ class GatewayEventHandlerTest extends CatsEffectSuite, Smockito {
     }
   }
 
-  test("handleDispatchEvent should handle unrecognized event types gracefully") {
+  test(
+    "handleDispatchEvent should handle unrecognized event types gracefully"
+  ) {
     val mocks = GatewayMocks[IO]()
     val ws = mock[WebSocket[IO]]
 

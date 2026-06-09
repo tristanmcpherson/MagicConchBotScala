@@ -33,7 +33,10 @@ class SearchInteractionHandlerTest extends CatsEffectSuite, Smockito {
       sampleYouTubeSearchResult(videoId = "video1", title = "Test Video 1"),
       sampleYouTubeSearchResult(videoId = "video2", title = "Test Video 2")
     )
-    val testTrack = sampleMusicTrack(title = "Test Track", url = "https://youtube.com/watch?v=video1")
+    val testTrack = sampleMusicTrack(
+      title = "Test Track",
+      url = "https://youtube.com/watch?v=video1"
+    )
     val emptyQueue = sampleMusicQueue()
 
     // Setup mocks using utilities
@@ -71,8 +74,18 @@ class SearchInteractionHandlerTest extends CatsEffectSuite, Smockito {
       verify(mocks.voiceManager).clearSearchResults("user123")
 
       // Verify that responses were sent
-      verify(mocks.discordApi).sendInteractionResponse(any[String], any[String], any[String])
-      verify(mocks.discordApi).editRichInteractionResponse(any[String], any[String], any[String], any[Option[List[MessageEmbed]]], any[Option[List[MessageComponent]]])
+      verify(mocks.discordApi).sendInteractionResponse(
+        any[String],
+        any[String],
+        any[String]
+      )
+      verify(mocks.discordApi).editRichInteractionResponse(
+        any[String],
+        any[String],
+        any[String],
+        any[Option[List[MessageEmbed]]],
+        any[Option[List[MessageComponent]]]
+      )
     }
   }
 
@@ -94,7 +107,11 @@ class SearchInteractionHandlerTest extends CatsEffectSuite, Smockito {
 
     handler.handle("search_select_user123_0", interaction, None).map { _ =>
       // Verify that expired response was sent
-      verify(mocks.discordApi).sendInteractionResponse(any[String], any[String], any[String])
+      verify(mocks.discordApi).sendInteractionResponse(
+        any[String],
+        any[String],
+        any[String]
+      )
     }
   }
 
@@ -117,7 +134,11 @@ class SearchInteractionHandlerTest extends CatsEffectSuite, Smockito {
 
     handler.handle("search_select_user123_5", interaction, None).map { _ =>
       // Verify that error response was sent
-      verify(mocks.discordApi).sendInteractionResponse(any[String], any[String], any[String])
+      verify(mocks.discordApi).sendInteractionResponse(
+        any[String],
+        any[String],
+        any[String]
+      )
     }
   }
 
@@ -130,8 +151,9 @@ class SearchInteractionHandlerTest extends CatsEffectSuite, Smockito {
     )
 
     // Should not throw exception, just log error
-    handler.handle("search_select_invalid", interaction, None).attempt.map { result =>
-      assert(result.isRight, "Should handle invalid format gracefully")
+    handler.handle("search_select_invalid", interaction, None).attempt.map {
+      result =>
+        assert(result.isRight, "Should handle invalid format gracefully")
     }
   }
 }

@@ -21,32 +21,37 @@ import dev.raegous.magicconch.guilds.GuildTracker
 import scala.concurrent.duration.*
 
 class DashboardServer[F[_]: Async](
-  voiceManager: VoiceManager[F],
-  guildTracker: GuildTracker[F],
-  port: Int = 8080
+    voiceManager: VoiceManager[F],
+    guildTracker: GuildTracker[F],
+    port: Int = 8080
 )(using Logger[F]) {
 
-  private val dsl = new Http4sDsl[F]{}
+  private val dsl = new Http4sDsl[F] {}
   import dsl.*
 
   // API Response Models
   case class HealthResponse(status: String, uptime: Long)
-  case class GuildInfo(id: String, name: String, queueSize: Int, isPlaying: Boolean)
+  case class GuildInfo(
+      id: String,
+      name: String,
+      queueSize: Int,
+      isPlaying: Boolean
+  )
   case class QueueResponse(
-    tracks: List[QueueTrack],
-    currentTrack: Option[QueueTrack],
-    isPlaying: Boolean
+      tracks: List[QueueTrack],
+      currentTrack: Option[QueueTrack],
+      isPlaying: Boolean
   )
   case class QueueTrack(
-    title: String,
-    url: String,
-    duration: Option[Int],
-    requestedBy: String
+      title: String,
+      url: String,
+      duration: Option[Int],
+      requestedBy: String
   )
   case class PlaybackResponse(
-    currentTrack: Option[QueueTrack],
-    isPlaying: Boolean,
-    queueLength: Int
+      currentTrack: Option[QueueTrack],
+      isPlaying: Boolean,
+      queueLength: Int
   )
   case class ErrorResponse(error: String)
 
@@ -77,7 +82,8 @@ class DashboardServer[F[_]: Async](
             GuildInfo(
               id = guild.id,
               name = guild.name,
-              queueSize = queue.tracks.length + queue.currentTrack.fold(0)(_ => 1),
+              queueSize =
+                queue.tracks.length + queue.currentTrack.fold(0)(_ => 1),
               isPlaying = queue.isPlaying
             )
           }
@@ -115,8 +121,8 @@ class DashboardServer[F[_]: Async](
 
     case POST -> Root / "guilds" / guildId / "stop" =>
       voiceManager.stopMusic(guildId) >>
-      voiceManager.clearQueue(guildId) >>
-      Ok(Map("message" -> "Stopped playback and cleared queue").asJson)
+        voiceManager.clearQueue(guildId) >>
+        Ok(Map("message" -> "Stopped playback and cleared queue").asJson)
 
     case DELETE -> Root / "guilds" / guildId / "queue" / IntVar(index) =>
       // TODO: Implement remove track by index
@@ -130,11 +136,9 @@ class DashboardServer[F[_]: Async](
   ).orNotFound
 
   // Apply CORS middleware to allow browser access
-  private val httpAppWithCors = CORS.policy
-    .withAllowOriginAll
-    .withAllowMethodsAll
-    .withAllowHeadersAll
-    .apply(httpApp)
+  private val httpAppWithCors =
+    CORS.policy.withAllowOriginAll.withAllowMethodsAll.withAllowHeadersAll
+      .apply(httpApp)
 
   def start: Resource[F, Unit] = {
     EmberServerBuilder
@@ -144,8 +148,12 @@ class DashboardServer[F[_]: Async](
       .withHttpApp(httpAppWithCors)
       .build
       .evalMap { server =>
-        Logger[F].info(s"Dashboard API server started at http://localhost:${server.address.getPort}") >>
-        Logger[F].info(s"Frontend: Run 'cd dashboard-ui && npm run dev' to start the React UI at http://localhost:3000")
+        Logger[F].info(
+          s"Dashboard API server started at http://localhost:${server.address.getPort}"
+        ) >>
+          Logger[F].info(
+            s"Frontend: Run 'cd dashboard-ui && npm run dev' to start the React UI at http://localhost:3000"
+          )
       }
       .void
   }

@@ -11,12 +11,12 @@ import dev.raegous.magicconch.discord.*
 import dev.raegous.magicconch.guilds.GuildSettingsManager
 
 class CommandRegistry[F[_]: Async](
-  voiceManager: VoiceManager[F],
-  trackExtractor: TrackExtractor[F],
-  youtubeSearch: YouTubeSearchClient[F],
-  guildSettings: GuildSettingsManager[F],
-  discordApi: DiscordApiClient[F],
-  applicationId: String
+    voiceManager: VoiceManager[F],
+    trackExtractor: TrackExtractor[F],
+    youtubeSearch: YouTubeSearchClient[F],
+    guildSettings: GuildSettingsManager[F],
+    discordApi: DiscordApiClient[F],
+    applicationId: String
 )(using Logger[F]) {
 
   private val commands: Map[String, Command[F]] = Map(
@@ -29,23 +29,35 @@ class CommandRegistry[F[_]: Async](
     "search" -> new SearchCommand[F](voiceManager, youtubeSearch)
   )
 
-  /**
-   * Interaction router for handling component interactions (buttons, select menus)
-   */
+  /** Interaction router for handling component interactions (buttons, select
+    * menus)
+    */
   val interactionRouter: InteractionRouter[F] = {
-    val searchHandler = new SearchInteractionHandler[F](voiceManager, trackExtractor, discordApi, applicationId)
-    val playerHandler = new PlayerInteractionHandler[F](voiceManager, discordApi, guildSettings)
+    val searchHandler = new SearchInteractionHandler[F](
+      voiceManager,
+      trackExtractor,
+      discordApi,
+      applicationId
+    )
+    val playerHandler =
+      new PlayerInteractionHandler[F](voiceManager, discordApi, guildSettings)
 
     InteractionRouter[F](searchHandler, playerHandler)
   }
 
-  def execute(commandName: String, context: CommandContext[F]): F[CommandResult] = {
-    commands.get(commandName.toLowerCase).fold(
-      CommandResult(s"❌ Unknown command: $commandName", isError = true).pure[F]
-    )(command =>
-      Logger[F].info(s"Executing command: $commandName") >>
-      command.execute(context)
-    )
+  def execute(
+      commandName: String,
+      context: CommandContext[F]
+  ): F[CommandResult] = {
+    commands
+      .get(commandName.toLowerCase)
+      .fold(
+        CommandResult(s"❌ Unknown command: $commandName", isError = true)
+          .pure[F]
+      )(command =>
+        Logger[F].info(s"Executing command: $commandName") >>
+          command.execute(context)
+      )
   }
 
   def hasCommand(commandName: String): Boolean = {

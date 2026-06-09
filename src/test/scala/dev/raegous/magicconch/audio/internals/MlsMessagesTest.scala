@@ -20,12 +20,21 @@ class MlsMessagesTest extends FunSuite {
     keyPackage match {
       case Right(value) =>
         assertEquals(value.version, MlsPrimitives.MlsVersion10)
-        assertEquals(value.cipherSuite, MlsPrimitives.CipherSuiteP256Aes128GcmSha256P256)
+        assertEquals(
+          value.cipherSuite,
+          MlsPrimitives.CipherSuiteP256Aes128GcmSha256P256
+        )
         assertEquals(value.leafNode.userId, Some(userId))
         assert(!value.initKey.sameElements(value.leafNode.encryptionKey))
         assertEquals(value.extensions.toList, Nil)
-        assertEquals(value.leafNode.capabilities.versions, List(MlsPrimitives.MlsVersion10))
-        assertEquals(value.leafNode.capabilities.cipherSuites, List(MlsPrimitives.CipherSuiteP256Aes128GcmSha256P256))
+        assertEquals(
+          value.leafNode.capabilities.versions,
+          List(MlsPrimitives.MlsVersion10)
+        )
+        assertEquals(
+          value.leafNode.capabilities.cipherSuites,
+          List(MlsPrimitives.CipherSuiteP256Aes128GcmSha256P256)
+        )
         assertEquals(value.leafNode.capabilities.extensions, Nil)
         assertEquals(value.leafNode.capabilities.proposals, Nil)
         assertEquals(value.leafNode.capabilities.credentials, List(1))
@@ -45,7 +54,11 @@ class MlsMessagesTest extends FunSuite {
     val keyPackage = (for {
       state <- DaveProtocol.generateKeyState[IO](userId)
       bytes <- DaveProtocol.buildKeyPackageMessage[IO](state, userId)
-    } yield MlsMessages.parseKeyPackageMessage(MlsPrimitives.uint16(MlsPrimitives.MlsVersion10) ++ MlsPrimitives.uint16(MlsMessages.WireFormatKeyPackage) ++ bytes)).unsafeRunSync()
+    } yield MlsMessages.parseKeyPackageMessage(
+      MlsPrimitives.uint16(MlsPrimitives.MlsVersion10) ++ MlsPrimitives.uint16(
+        MlsMessages.WireFormatKeyPackage
+      ) ++ bytes
+    )).unsafeRunSync()
 
     keyPackage match {
       case Right(value) =>
@@ -58,16 +71,25 @@ class MlsMessagesTest extends FunSuite {
     }
   }
 
-  test("DAVE proposal validation should accept signed external add proposals for recognized users") {
+  test(
+    "DAVE proposal validation should accept signed external add proposals for recognized users"
+  ) {
     val externalKey = generateSigningKey()
     val addUserState = DaveProtocol.generateKeyState[IO](userId).unsafeRunSync()
-    val addKeyPackageMessage = DaveProtocol.buildKeyPackageMessageSync(addUserState, userId)
-    val proposal = MlsPrimitives.uint16(MlsMessages.ProposalTypeAdd) ++ addKeyPackageMessage
+    val addKeyPackageMessage =
+      DaveProtocol.buildKeyPackageMessageSync(addUserState, userId)
+    val proposal =
+      MlsPrimitives.uint16(MlsMessages.ProposalTypeAdd) ++ addKeyPackageMessage
     val publicProposal = signedExternalProposal(externalKey, proposal)
-    val proposalBatch = MlsPrimitives.uint8(0) ++ MlsPrimitives.vectorVar(List(MlsPrimitives.opaqueVar(publicProposal)))
+    val proposalBatch = MlsPrimitives.uint8(0) ++ MlsPrimitives.vectorVar(
+      List(MlsPrimitives.opaqueVar(publicProposal))
+    )
     val externalSender = DaveSupport.ExternalSender(
       signatureKey = uncompressedPoint(externalKey),
-      credential = DaveSupport.Credential(credentialType = 1, identity = "gateway".getBytes("UTF-8"))
+      credential = DaveSupport.Credential(
+        credentialType = 1,
+        identity = "gateway".getBytes("UTF-8")
+      )
     )
 
     val validated = DaveProtocol.validateProposalBatches(
@@ -77,7 +99,16 @@ class MlsMessagesTest extends FunSuite {
     )
 
     validated match {
-      case Right(List(DaveValidatedProposal(_, MlsMessages.AddProposal(keyPackage), _, rawMessage))) =>
+      case Right(
+            List(
+              DaveValidatedProposal(
+                _,
+                MlsMessages.AddProposal(keyPackage),
+                _,
+                rawMessage
+              )
+            )
+          ) =>
         assertEquals(keyPackage.leafNode.userId, Some(userId))
         assert(rawMessage.exists(_.sameElements(publicProposal)))
 
@@ -86,16 +117,23 @@ class MlsMessagesTest extends FunSuite {
     }
   }
 
-  test("DAVE proposal validation should accept raw MLSMessage append proposal payloads") {
+  test(
+    "DAVE proposal validation should accept raw MLSMessage append proposal payloads"
+  ) {
     val externalKey = generateSigningKey()
     val addUserState = DaveProtocol.generateKeyState[IO](userId).unsafeRunSync()
-    val addKeyPackageMessage = DaveProtocol.buildKeyPackageMessageSync(addUserState, userId)
-    val proposal = MlsPrimitives.uint16(MlsMessages.ProposalTypeAdd) ++ addKeyPackageMessage
+    val addKeyPackageMessage =
+      DaveProtocol.buildKeyPackageMessageSync(addUserState, userId)
+    val proposal =
+      MlsPrimitives.uint16(MlsMessages.ProposalTypeAdd) ++ addKeyPackageMessage
     val publicProposal = signedExternalProposal(externalKey, proposal)
     val proposalBatch = MlsPrimitives.uint8(0) ++ publicProposal
     val externalSender = DaveSupport.ExternalSender(
       signatureKey = uncompressedPoint(externalKey),
-      credential = DaveSupport.Credential(credentialType = 1, identity = "gateway".getBytes("UTF-8"))
+      credential = DaveSupport.Credential(
+        credentialType = 1,
+        identity = "gateway".getBytes("UTF-8")
+      )
     )
 
     val validated = DaveProtocol.validateProposalBatches(
@@ -107,16 +145,24 @@ class MlsMessagesTest extends FunSuite {
     assert(validated.exists(_.size == 1))
   }
 
-  test("DAVE proposal validation should accept opaque single MLSMessage append proposal payloads") {
+  test(
+    "DAVE proposal validation should accept opaque single MLSMessage append proposal payloads"
+  ) {
     val externalKey = generateSigningKey()
     val addUserState = DaveProtocol.generateKeyState[IO](userId).unsafeRunSync()
-    val addKeyPackageMessage = DaveProtocol.buildKeyPackageMessageSync(addUserState, userId)
-    val proposal = MlsPrimitives.uint16(MlsMessages.ProposalTypeAdd) ++ addKeyPackageMessage
+    val addKeyPackageMessage =
+      DaveProtocol.buildKeyPackageMessageSync(addUserState, userId)
+    val proposal =
+      MlsPrimitives.uint16(MlsMessages.ProposalTypeAdd) ++ addKeyPackageMessage
     val publicProposal = signedExternalProposal(externalKey, proposal)
-    val proposalBatch = MlsPrimitives.uint8(0) ++ MlsPrimitives.opaqueVar(publicProposal)
+    val proposalBatch =
+      MlsPrimitives.uint8(0) ++ MlsPrimitives.opaqueVar(publicProposal)
     val externalSender = DaveSupport.ExternalSender(
       signatureKey = uncompressedPoint(externalKey),
-      credential = DaveSupport.Credential(credentialType = 1, identity = "gateway".getBytes("UTF-8"))
+      credential = DaveSupport.Credential(
+        credentialType = 1,
+        identity = "gateway".getBytes("UTF-8")
+      )
     )
 
     val validated = DaveProtocol.validateProposalBatches(
@@ -128,17 +174,25 @@ class MlsMessagesTest extends FunSuite {
     assert(validated.exists(_.size == 1))
   }
 
-
-  test("DAVE proposal validation should reject add proposals for unrecognized users") {
+  test(
+    "DAVE proposal validation should reject add proposals for unrecognized users"
+  ) {
     val externalKey = generateSigningKey()
     val addUserState = DaveProtocol.generateKeyState[IO](userId).unsafeRunSync()
-    val addKeyPackageMessage = DaveProtocol.buildKeyPackageMessageSync(addUserState, userId)
-    val proposal = MlsPrimitives.uint16(MlsMessages.ProposalTypeAdd) ++ addKeyPackageMessage
+    val addKeyPackageMessage =
+      DaveProtocol.buildKeyPackageMessageSync(addUserState, userId)
+    val proposal =
+      MlsPrimitives.uint16(MlsMessages.ProposalTypeAdd) ++ addKeyPackageMessage
     val publicProposal = signedExternalProposal(externalKey, proposal)
-    val proposalBatch = MlsPrimitives.uint8(0) ++ MlsPrimitives.vectorVar(List(MlsPrimitives.opaqueVar(publicProposal)))
+    val proposalBatch = MlsPrimitives.uint8(0) ++ MlsPrimitives.vectorVar(
+      List(MlsPrimitives.opaqueVar(publicProposal))
+    )
     val externalSender = DaveSupport.ExternalSender(
       signatureKey = uncompressedPoint(externalKey),
-      credential = DaveSupport.Credential(credentialType = 1, identity = "gateway".getBytes("UTF-8"))
+      credential = DaveSupport.Credential(
+        credentialType = 1,
+        identity = "gateway".getBytes("UTF-8")
+      )
     )
 
     val validated = DaveProtocol.validateProposalBatches(
@@ -150,13 +204,18 @@ class MlsMessagesTest extends FunSuite {
     assert(validated.isLeft)
   }
 
-  test("DAVE MLS engines should process external add proposals, commit, welcome, and derive matching media secrets") {
+  test(
+    "DAVE MLS engines should process external add proposals, commit, welcome, and derive matching media secrets"
+  ) {
     val leaderUserId = "149639766382608384"
     val joinerUserId = "1090123456789012345"
     val groupId = "voice-channel"
-    val leaderState = DaveProtocol.generateKeyState[IO](leaderUserId).unsafeRunSync()
-    val joinerState = DaveProtocol.generateKeyState[IO](joinerUserId).unsafeRunSync()
-    val externalSigner = DaveMlsTestHarness.createExternalSigner("gateway".getBytes("UTF-8"))
+    val leaderState =
+      DaveProtocol.generateKeyState[IO](leaderUserId).unsafeRunSync()
+    val joinerState =
+      DaveProtocol.generateKeyState[IO](joinerUserId).unsafeRunSync()
+    val externalSigner =
+      DaveMlsTestHarness.createExternalSigner("gateway".getBytes("UTF-8"))
     val proposalBatch = externalSigner.signedAddProposalBatch(
       groupId,
       DaveProtocol.buildKeyPackageMessageSync(joinerState, joinerUserId)
@@ -174,7 +233,9 @@ class MlsMessagesTest extends FunSuite {
     val welcome = commitWelcome match {
       case Right(Some(value)) =>
         assert(value.welcomeMessage.nonEmpty)
-        assert(MlsMessages.parseWelcomePayload(value.welcomeMessage.get).isRight)
+        assert(
+          MlsMessages.parseWelcomePayload(value.welcomeMessage.get).isRight
+        )
         leaderState.mlsEngine.processCommit(value.commitMessage)
         value.welcomeMessage.get
 
@@ -189,15 +250,26 @@ class MlsMessagesTest extends FunSuite {
       welcomeMessage = welcome,
       recognizedUserIds = Set(leaderUserId, joinerUserId)
     ) match {
-      case Right(_) => ()
+      case Right(_)    => ()
       case Left(error) => fail(error)
     }
 
-    assert(leaderState.mlsEngine.senderBaseSecretFor(leaderUserId).sameElements(joinerState.mlsEngine.senderBaseSecretFor(leaderUserId)))
-    assert(leaderState.mlsEngine.senderBaseSecretFor(joinerUserId).sameElements(joinerState.mlsEngine.senderBaseSecretFor(joinerUserId)))
+    assert(
+      leaderState.mlsEngine
+        .senderBaseSecretFor(leaderUserId)
+        .sameElements(joinerState.mlsEngine.senderBaseSecretFor(leaderUserId))
+    )
+    assert(
+      leaderState.mlsEngine
+        .senderBaseSecretFor(joinerUserId)
+        .sameElements(joinerState.mlsEngine.senderBaseSecretFor(joinerUserId))
+    )
   }
 
-  private def signedExternalProposal(externalKey: KeyPair, proposal: Array[Byte]): Array[Byte] = {
+  private def signedExternalProposal(
+      externalKey: KeyPair,
+      proposal: Array[Byte]
+  ): Array[Byte] = {
     val framedContent =
       MlsPrimitives.opaqueVar("voice-channel".getBytes("UTF-8")) ++
         MlsPrimitives.uint64(0L) ++
@@ -218,10 +290,18 @@ class MlsMessagesTest extends FunSuite {
       MlsPrimitives.opaqueVar(signature)
   }
 
-  private def signWithLabel(label: String, content: Array[Byte], keyPair: KeyPair): Array[Byte] = {
+  private def signWithLabel(
+      label: String,
+      content: Array[Byte],
+      keyPair: KeyPair
+  ): Array[Byte] = {
     val signer = Signature.getInstance("SHA256withECDSA")
     signer.initSign(keyPair.getPrivate)
-    signer.update(MlsPrimitives.opaqueVar(s"MLS 1.0 $label".getBytes("UTF-8")) ++ MlsPrimitives.opaqueVar(content))
+    signer.update(
+      MlsPrimitives.opaqueVar(
+        s"MLS 1.0 $label".getBytes("UTF-8")
+      ) ++ MlsPrimitives.opaqueVar(content)
+    )
     signer.sign()
   }
 
@@ -233,7 +313,9 @@ class MlsMessagesTest extends FunSuite {
 
   private def uncompressedPoint(kp: KeyPair): Array[Byte] = {
     val ec = kp.getPublic.asInstanceOf[ECPublicKey]
-    Array(0x04.toByte) ++ padTo32(ec.getW.getAffineX.toByteArray) ++ padTo32(ec.getW.getAffineY.toByteArray)
+    Array(0x04.toByte) ++ padTo32(ec.getW.getAffineX.toByteArray) ++ padTo32(
+      ec.getW.getAffineY.toByteArray
+    )
   }
 
   private def padTo32(bytes: Array[Byte]): Array[Byte] =

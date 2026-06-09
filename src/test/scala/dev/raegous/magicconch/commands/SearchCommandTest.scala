@@ -65,7 +65,10 @@ class SearchCommandTest extends CatsEffectSuite, Smockito {
 
     command.execute(context).map { result =>
       assert(result.isError, "Should return error")
-      assert(result.message.contains("No results"), "Should indicate no results")
+      assert(
+        result.message.contains("No results"),
+        "Should indicate no results"
+      )
     }
   }
 
@@ -98,23 +101,35 @@ class SearchCommandTest extends CatsEffectSuite, Smockito {
     command.execute(context).map { result =>
       // Check basic result
       assert(!result.isError, "Should not be an error")
-      assert(result.message.contains("3 results"), "Should mention result count")
+      assert(
+        result.message.contains("3 results"),
+        "Should mention result count"
+      )
 
       // Check embeds
       assert(result.embeds.isDefined, "Should have embeds")
       assert(result.embeds.exists(_.nonEmpty), "Should have at least one embed")
 
       val embed = result.embeds.get.head
-      assert(embed.title.exists(_.contains("Search Results")), "Title should indicate search results")
+      assert(
+        embed.title.exists(_.contains("Search Results")),
+        "Title should indicate search results"
+      )
       assert(embed.fields.exists(_.length == 3), "Should have 3 result fields")
 
       // Check components (buttons)
       assert(result.components.isDefined, "Should have components")
-      assert(result.components.exists(_.nonEmpty), "Should have at least one action row")
+      assert(
+        result.components.exists(_.nonEmpty),
+        "Should have at least one action row"
+      )
 
       val actionRow = result.components.get.head
       assertEquals(actionRow.`type`, 1, "Should be an action row")
-      assert(actionRow.components.exists(_.length == 3), "Should have 3 buttons")
+      assert(
+        actionRow.components.exists(_.length == 3),
+        "Should have 3 buttons"
+      )
 
       // Verify that results were stored
       verify(mocks.voiceManager).storeSearchResults("user123", searchResults)
@@ -158,7 +173,10 @@ class SearchCommandTest extends CatsEffectSuite, Smockito {
       assertEquals(buttons(1).label, Some("2"))
 
       // Check button styles (Primary = 1)
-      assert(buttons.forall(_.style.contains(1)), "All buttons should be primary style")
+      assert(
+        buttons.forall(_.style.contains(1)),
+        "All buttons should be primary style"
+      )
     }
   }
 
@@ -223,8 +241,14 @@ class SearchCommandTest extends CatsEffectSuite, Smockito {
 
     command.execute(context).map { result =>
       val field = result.embeds.get.head.fields.get.head
-      assert(field.name.length <= 63, "Title should be truncated (60 chars + '...')")
-      assert(field.name.endsWith("..."), "Truncated title should end with '...'")
+      assert(
+        field.name.length <= 63,
+        "Title should be truncated (60 chars + '...')"
+      )
+      assert(
+        field.name.endsWith("..."),
+        "Truncated title should end with '...'"
+      )
     }
   }
 }

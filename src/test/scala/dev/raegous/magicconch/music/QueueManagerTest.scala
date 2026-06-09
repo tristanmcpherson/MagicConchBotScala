@@ -44,7 +44,10 @@ class QueueManagerTest extends CatsEffectSuite {
         queue <- qm.getQueue("guild123")
       } yield {
         assertEquals(queue.tracks.length, 3)
-        assertEquals(queue.tracks.map(_.title), List("Track 1", "Track 2", "Track 3"))
+        assertEquals(
+          queue.tracks.map(_.title),
+          List("Track 1", "Track 2", "Track 3")
+        )
       }
     }
   }
@@ -64,7 +67,11 @@ class QueueManagerTest extends CatsEffectSuite {
         assertEquals(next.get.title, "Track 1")
         assertEquals(queue.tracks.length, 1, "Should have 1 remaining track")
         assertEquals(queue.tracks.head.title, "Track 2")
-        assertEquals(queue.currentTrack.map(_.title), Some("Track 1"), "Should set as current track")
+        assertEquals(
+          queue.currentTrack.map(_.title),
+          Some("Track 1"),
+          "Should set as current track"
+        )
       }
     }
   }
@@ -127,9 +134,17 @@ class QueueManagerTest extends CatsEffectSuite {
   test("updatePlaybackState should update paused state") {
     QueueManager.make[IO].use { qm =>
       for {
-        _ <- qm.updatePlaybackState("guild123", isPlaying = true, isPaused = true)
+        _ <- qm.updatePlaybackState(
+          "guild123",
+          isPlaying = true,
+          isPaused = true
+        )
         queue1 <- qm.getQueue("guild123")
-        _ <- qm.updatePlaybackState("guild123", isPlaying = true, isPaused = false)
+        _ <- qm.updatePlaybackState(
+          "guild123",
+          isPlaying = true,
+          isPaused = false
+        )
         queue2 <- qm.getQueue("guild123")
       } yield {
         assert(queue1.isPaused, "Should be paused")
@@ -164,9 +179,17 @@ class QueueManagerTest extends CatsEffectSuite {
     QueueManager.make[IO].use { qm =>
       for {
         paused1 <- qm.isPaused("guild123")
-        _ <- qm.updatePlaybackState("guild123", isPlaying = true, isPaused = true)
+        _ <- qm.updatePlaybackState(
+          "guild123",
+          isPlaying = true,
+          isPaused = true
+        )
         paused2 <- qm.isPaused("guild123")
-        _ <- qm.updatePlaybackState("guild123", isPlaying = true, isPaused = false)
+        _ <- qm.updatePlaybackState(
+          "guild123",
+          isPlaying = true,
+          isPaused = false
+        )
         paused3 <- qm.isPaused("guild123")
       } yield {
         assert(!paused1, "Should not be paused initially")
@@ -179,7 +202,12 @@ class QueueManagerTest extends CatsEffectSuite {
   test("getCurrentPosition should return static position when paused") {
     QueueManager.make[IO].use { qm =>
       for {
-        _ <- qm.updatePlaybackState("guild123", isPlaying = true, isPaused = true, currentPosition = 60)
+        _ <- qm.updatePlaybackState(
+          "guild123",
+          isPlaying = true,
+          isPaused = true,
+          currentPosition = 60
+        )
         position <- qm.getCurrentPosition("guild123")
       } yield {
         assertEquals(position, 60, "Position should be static when paused")
