@@ -21,17 +21,17 @@ object MlsPrimitives {
       bytes.slice(start, end)
 
     def readUInt8(): Either[DecodeError, Int] =
-      readBytes(1).map(_(0) & 0xFF)
+      readBytes(1).map(_(0) & 0xff)
 
     def readUInt16(): Either[DecodeError, Int] =
-      readBytes(2).map(b => ((b(0) & 0xFF) << 8) | (b(1) & 0xFF))
+      readBytes(2).map(b => ((b(0) & 0xff) << 8) | (b(1) & 0xff))
 
     def readUInt32(): Either[DecodeError, Long] =
       readBytes(4).map { b =>
-        ((b(0) & 0xFFL) << 24) |
-          ((b(1) & 0xFFL) << 16) |
-          ((b(2) & 0xFFL) << 8) |
-          (b(3) & 0xFFL)
+        ((b(0) & 0xffL) << 24) |
+          ((b(1) & 0xffL) << 16) |
+          ((b(2) & 0xffL) << 8) |
+          (b(3) & 0xffL)
       }
 
     def readUInt64(): Either[DecodeError, Long] =
@@ -40,19 +40,19 @@ object MlsPrimitives {
     def readVarInt(): Either[DecodeError, Int] =
       if (remaining < 1) Left(DecodeError("missing MLS varint"))
       else {
-        val first = bytes(offset) & 0xFF
+        val first = bytes(offset) & 0xff
         (first >>> 6) match {
           case 0 =>
             offset += 1
-            Right(first & 0x3F)
+            Right(first & 0x3f)
           case 1 =>
-            readBytes(2).map(b => ((b(0) & 0x3F) << 8) | (b(1) & 0xFF))
+            readBytes(2).map(b => ((b(0) & 0x3f) << 8) | (b(1) & 0xff))
           case 2 =>
             readBytes(4).map { b =>
-              ((b(0) & 0x3F) << 24) |
-                ((b(1) & 0xFF) << 16) |
-                ((b(2) & 0xFF) << 8) |
-                (b(3) & 0xFF)
+              ((b(0) & 0x3f) << 24) |
+                ((b(1) & 0xff) << 16) |
+                ((b(2) & 0xff) << 8) |
+                (b(3) & 0xff)
             }
           case _ =>
             Left(DecodeError("8-byte MLS varints are unsupported"))
@@ -62,14 +62,16 @@ object MlsPrimitives {
     def readOpaqueVar(): Either[DecodeError, Array[Byte]] =
       readVarInt().flatMap(readBytes)
 
-    def readVectorVar[A](decodeOne: Reader => Either[DecodeError, A]): Either[DecodeError, List[A]] =
+    def readVectorVar[A](
+        decodeOne: Reader => Either[DecodeError, A]
+    ): Either[DecodeError, List[A]] =
       readOpaqueVar().flatMap { vectorBytes =>
         val reader = Reader(vectorBytes)
         val out = scala.collection.mutable.ListBuffer.empty[A]
         var failure = Option.empty[DecodeError]
         while (!reader.atEnd && failure.isEmpty) {
           decodeOne(reader) match {
-            case Left(error) => failure = Some(error)
+            case Left(error)  => failure = Some(error)
             case Right(value) => out += value
           }
         }
@@ -78,7 +80,12 @@ object MlsPrimitives {
 
     def readBytes(length: Int): Either[DecodeError, Array[Byte]] =
       if (length < 0) Left(DecodeError(s"negative read length: $length"))
-      else if (remaining < length) Left(DecodeError(s"truncated MLS structure: need $length bytes, have $remaining"))
+      else if (remaining < length)
+        Left(
+          DecodeError(
+            s"truncated MLS structure: need $length bytes, have $remaining"
+          )
+        )
       else {
         val out = bytes.slice(offset, offset + length)
         offset += length
@@ -92,22 +99,22 @@ object MlsPrimitives {
   }
 
   def uint8(value: Int): Array[Byte] = {
-    require(value >= 0 && value <= 0xFF, s"uint8 out of range: $value")
+    require(value >= 0 && value <= 0xff, s"uint8 out of range: $value")
     Array(value.toByte)
   }
 
   def uint16(value: Int): Array[Byte] = {
-    require(value >= 0 && value <= 0xFFFF, s"uint16 out of range: $value")
-    Array(((value >>> 8) & 0xFF).toByte, (value & 0xFF).toByte)
+    require(value >= 0 && value <= 0xffff, s"uint16 out of range: $value")
+    Array(((value >>> 8) & 0xff).toByte, (value & 0xff).toByte)
   }
 
   def uint32(value: Long): Array[Byte] = {
-    require(value >= 0 && value <= 0xFFFFFFFFL, s"uint32 out of range: $value")
+    require(value >= 0 && value <= 0xffffffffL, s"uint32 out of range: $value")
     Array(
-      ((value >>> 24) & 0xFF).toByte,
-      ((value >>> 16) & 0xFF).toByte,
-      ((value >>> 8) & 0xFF).toByte,
-      (value & 0xFF).toByte
+      ((value >>> 24) & 0xff).toByte,
+      ((value >>> 16) & 0xff).toByte,
+      ((value >>> 8) & 0xff).toByte,
+      (value & 0xff).toByte
     )
   }
 
@@ -118,12 +125,13 @@ object MlsPrimitives {
     require(value >= 0, s"MLS varint must be non-negative: $value")
     if (value < 0x40) Array(value.toByte)
     else if (value < 0x4000) Array(((value >>> 8) | 0x40).toByte, value.toByte)
-    else if (value < 0x40000000) Array(
-      ((value >>> 24) | 0x80).toByte,
-      (value >>> 16).toByte,
-      (value >>> 8).toByte,
-      value.toByte
-    )
+    else if (value < 0x40000000)
+      Array(
+        ((value >>> 24) | 0x80).toByte,
+        (value >>> 16).toByte,
+        (value >>> 8).toByte,
+        value.toByte
+      )
     else throw new IllegalArgumentException(s"MLS varint too large: $value")
   }
 
@@ -140,11 +148,20 @@ object MlsPrimitives {
 
   def hkdfExtract(salt: Array[Byte], ikm: Array[Byte]): Array[Byte] = {
     val mac = Mac.getInstance("HmacSHA256")
-    mac.init(new SecretKeySpec(if (salt.isEmpty) Array.fill[Byte](HashLength)(0) else salt, "HmacSHA256"))
+    mac.init(
+      new SecretKeySpec(
+        if (salt.isEmpty) Array.fill[Byte](HashLength)(0) else salt,
+        "HmacSHA256"
+      )
+    )
     mac.doFinal(ikm)
   }
 
-  def hkdfExpand(prk: Array[Byte], info: Array[Byte], length: Int): Array[Byte] = {
+  def hkdfExpand(
+      prk: Array[Byte],
+      info: Array[Byte],
+      length: Int
+  ): Array[Byte] = {
     val mac = Mac.getInstance("HmacSHA256")
     mac.init(new SecretKeySpec(prk, "HmacSHA256"))
 
@@ -165,7 +182,12 @@ object MlsPrimitives {
     out.toByteArray.take(length)
   }
 
-  def expandWithLabel(secret: Array[Byte], label: String, context: Array[Byte], length: Int): Array[Byte] = {
+  def expandWithLabel(
+      secret: Array[Byte],
+      label: String,
+      context: Array[Byte],
+      length: Int
+  ): Array[Byte] = {
     val fullLabel = s"MLS 1.0 $label".getBytes("UTF-8")
     val hkdfLabel = uint16(length) ++ opaque8(fullLabel) ++ opaqueVar(context)
     hkdfExpand(secret, hkdfLabel, length)
@@ -174,13 +196,22 @@ object MlsPrimitives {
   def deriveSecret(secret: Array[Byte], label: String): Array[Byte] =
     expandWithLabel(secret, label, hash(Array.emptyByteArray), HashLength)
 
-  def deriveSecret(secret: Array[Byte], label: String, transcriptHash: Array[Byte]): Array[Byte] =
+  def deriveSecret(
+      secret: Array[Byte],
+      label: String,
+      transcriptHash: Array[Byte]
+  ): Array[Byte] =
     expandWithLabel(secret, label, transcriptHash, HashLength)
 
   def refHash(label: String, value: Array[Byte]): Array[Byte] =
     hash(opaqueVar(s"MLS 1.0 $label".getBytes("UTF-8")) ++ opaqueVar(value))
 
-  def exporterSecret(exporterMasterSecret: Array[Byte], label: String, context: Array[Byte], length: Int): Array[Byte] =
+  def exporterSecret(
+      exporterMasterSecret: Array[Byte],
+      label: String,
+      context: Array[Byte],
+      length: Int
+  ): Array[Byte] =
     expandWithLabel(
       deriveSecret(exporterMasterSecret, label),
       "exporter",
@@ -188,26 +219,39 @@ object MlsPrimitives {
       length
     )
 
-  def daveUserMediaBaseSecret(exporterSecretValue: Array[Byte], userId: String): Array[Byte] = {
+  def daveUserMediaBaseSecret(
+      exporterSecretValue: Array[Byte],
+      userId: String
+  ): Array[Byte] = {
     val userIdLe = littleEndianUInt64(java.lang.Long.parseUnsignedLong(userId))
-    exporterSecret(exporterSecretValue, "Discord Secure Frames v0", userIdLe, Aes128KeyLength)
+    exporterSecret(
+      exporterSecretValue,
+      "Discord Secure Frames v0",
+      userIdLe,
+      Aes128KeyLength
+    )
   }
 
-  def daveSenderRatchet(exporterSecretValue: Array[Byte], userId: String): DaveSupport.SenderKeyRatchet =
-    new DaveSupport.HkdfSenderKeyRatchet(daveUserMediaBaseSecret(exporterSecretValue, userId))
+  def daveSenderRatchet(
+      exporterSecretValue: Array[Byte],
+      userId: String
+  ): DaveSupport.SenderKeyRatchet =
+    new DaveSupport.HkdfSenderKeyRatchet(
+      daveUserMediaBaseSecret(exporterSecretValue, userId)
+    )
 
   private def littleEndianUInt64(value: Long): Array[Byte] = {
     val out = new Array[Byte](8)
     var i = 0
     while (i < 8) {
-      out(i) = ((value >>> (8 * i)) & 0xFF).toByte
+      out(i) = ((value >>> (8 * i)) & 0xff).toByte
       i += 1
     }
     out
   }
 
   private def opaque8(bytes: Array[Byte]): Array[Byte] = {
-    require(bytes.length <= 0xFF, s"opaque8 too large: ${bytes.length}")
+    require(bytes.length <= 0xff, s"opaque8 too large: ${bytes.length}")
     Array(bytes.length.toByte) ++ bytes
   }
 }

@@ -4,7 +4,7 @@ import munit.FunSuite
 
 class MlsPrimitivesTest extends FunSuite {
   test("MLS varint should round trip supported lengths") {
-    val values = List(0, 1, 63, 64, 255, 16383, 16384, 0x3FFFFFFF)
+    val values = List(0, 1, 63, 64, 255, 16383, 16384, 0x3fffffff)
 
     values.foreach { value =>
       val encoded = MlsPrimitives.varint(value)
@@ -16,13 +16,13 @@ class MlsPrimitivesTest extends FunSuite {
   }
 
   test("MLS opaque vector should round trip") {
-    val data = Array.tabulate[Byte](300)(i => (i & 0xFF).toByte)
+    val data = Array.tabulate[Byte](300)(i => (i & 0xff).toByte)
     val encoded = MlsPrimitives.opaqueVar(data)
     val decoded = MlsPrimitives.Reader(encoded).readOpaqueVar()
 
     decoded match {
       case Right(value) => assert(value.sameElements(data))
-      case Left(error) => fail(error.message)
+      case Left(error)  => fail(error.message)
     }
   }
 
@@ -45,24 +45,40 @@ class MlsPrimitivesTest extends FunSuite {
         MlsPrimitives.opaqueVar(value)
     )
 
-    assert(MlsPrimitives.refHash("Proposal Reference", value).sameElements(expected))
+    assert(
+      MlsPrimitives.refHash("Proposal Reference", value).sameElements(expected)
+    )
   }
 
   test("DAVE media base secret should use little-endian user id context") {
     val exporterSecret = Array.fill[Byte](32)(0x22.toByte)
 
-    val baseA = MlsPrimitives.daveUserMediaBaseSecret(exporterSecret, "149639766382608384")
-    val baseB = MlsPrimitives.daveUserMediaBaseSecret(exporterSecret, "149639766382608384")
-    val baseC = MlsPrimitives.daveUserMediaBaseSecret(exporterSecret, "149639766382608385")
+    val baseA = MlsPrimitives.daveUserMediaBaseSecret(
+      exporterSecret,
+      "149639766382608384"
+    )
+    val baseB = MlsPrimitives.daveUserMediaBaseSecret(
+      exporterSecret,
+      "149639766382608384"
+    )
+    val baseC = MlsPrimitives.daveUserMediaBaseSecret(
+      exporterSecret,
+      "149639766382608385"
+    )
 
     assertEquals(baseA.length, 16)
     assert(baseA.sameElements(baseB))
     assert(!baseA.sameElements(baseC))
   }
 
-  test("DaveProtocol should derive a self sender ratchet from exporter secret") {
+  test(
+    "DaveProtocol should derive a self sender ratchet from exporter secret"
+  ) {
     val exporterSecret = Array.fill[Byte](32)(0x33.toByte)
-    val ratchet = DaveProtocol.deriveSelfRatchetFromExporterSecret(exporterSecret, "149639766382608384")
+    val ratchet = DaveProtocol.deriveSelfRatchetFromExporterSecret(
+      exporterSecret,
+      "149639766382608384"
+    )
 
     val key0 = ratchet.keyFor(0)
     val key0Again = ratchet.keyFor(1)

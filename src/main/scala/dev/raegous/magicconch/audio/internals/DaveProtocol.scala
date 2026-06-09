@@ -8,27 +8,32 @@ import java.security.interfaces.ECPublicKey
 import java.security.spec.ECGenParameterSpec
 
 case class DaveKeyState(
-  signingKeyPair: KeyPair,
-  hpkeKeyPair: KeyPair,
-  initKeyPair: KeyPair,
-  mlsEngine: DaveMlsEngine
+    signingKeyPair: KeyPair,
+    hpkeKeyPair: KeyPair,
+    initKeyPair: KeyPair,
+    mlsEngine: DaveMlsEngine
 )
 
 final case class DaveMlsGroupState(
-  groupId: String,
-  selfUserId: String,
-  epoch: Long,
-  treeHash: Array[Byte],
-  confirmedTranscriptHash: Array[Byte],
-  interimTranscriptHash: Array[Byte],
-  epochSecret: Array[Byte],
-  exporterSecret: Array[Byte]
+    groupId: String,
+    selfUserId: String,
+    epoch: Long,
+    treeHash: Array[Byte],
+    confirmedTranscriptHash: Array[Byte],
+    interimTranscriptHash: Array[Byte],
+    epochSecret: Array[Byte],
+    exporterSecret: Array[Byte]
 ) {
   def selfSenderRatchet: DaveSupport.SenderKeyRatchet =
     MlsPrimitives.daveSenderRatchet(exporterSecret, selfUserId)
 }
 
-final case class DaveValidatedProposal(ref: Array[Byte], proposal: MlsMessages.Proposal, groupId: Array[Byte], rawMessage: Option[Array[Byte]])
+final case class DaveValidatedProposal(
+    ref: Array[Byte],
+    proposal: MlsMessages.Proposal,
+    groupId: Array[Byte],
+    rawMessage: Option[Array[Byte]]
+)
 
 object DaveProtocol {
   private val ProtocolVersionMls10 = 0x0001
@@ -37,7 +42,7 @@ object DaveProtocol {
   private val CredentialTypeBasic = 0x0001
   private val LeafNodeSourceKeyPackage = 0x01
   private val KeyPackageLifetimeNotBefore = Array.fill[Byte](8)(0)
-  private val KeyPackageLifetimeNotAfter = Array.fill[Byte](8)(0xFF.toByte)
+  private val KeyPackageLifetimeNotAfter = Array.fill[Byte](8)(0xff.toByte)
 
   def generateKeyState[F[_]: Sync](): F[DaveKeyState] = Sync[F].blocking {
     val gen = KeyPairGenerator.getInstance("EC")
@@ -51,9 +56,10 @@ object DaveProtocol {
     )
   }
 
-  def generateKeyState[F[_]: Sync](selfUserId: String): F[DaveKeyState] = Sync[F].blocking {
-    generateKeyStateSync(selfUserId)
-  }
+  def generateKeyState[F[_]: Sync](selfUserId: String): F[DaveKeyState] =
+    Sync[F].blocking {
+      generateKeyStateSync(selfUserId)
+    }
 
   def generateKeyStateSync(selfUserId: String): DaveKeyState = {
     val gen = KeyPairGenerator.getInstance("EC")
@@ -66,59 +72,105 @@ object DaveProtocol {
     )
   }
 
-  def buildKeyPackageMessage[F[_]: Sync](state: DaveKeyState, userId: String): F[Array[Byte]] =
+  def buildKeyPackageMessage[F[_]: Sync](
+      state: DaveKeyState,
+      userId: String
+  ): F[Array[Byte]] =
     Sync[F].blocking(state.mlsEngine.keyPackageMessage())
 
-  def buildKeyPackageMessageSync(state: DaveKeyState, userId: String): Array[Byte] =
+  def buildKeyPackageMessageSync(
+      state: DaveKeyState,
+      userId: String
+  ): Array[Byte] =
     state.mlsEngine.keyPackageMessage()
 
   def buildCommitWelcomeFromProposals(
-    state: DaveKeyState,
-    selfUserId: String,
-    groupId: String,
-    externalSender: Option[DaveSupport.ExternalSender],
-    proposals: List[Array[Byte]],
-    recognizedUserIds: Set[String]
+      state: DaveKeyState,
+      selfUserId: String,
+      groupId: String,
+      externalSender: Option[DaveSupport.ExternalSender],
+      proposals: List[Array[Byte]],
+      recognizedUserIds: Set[String]
   ): Either[String, Option[DaveSupport.MlsCommitWelcome]] =
     for {
-      pending <- validateProposalBatches(externalSender, proposals, recognizedUserIds)
+      pending <- validateProposalBatches(
+        externalSender,
+        proposals,
+        recognizedUserIds
+      )
       sender <- externalSender.toRight("Missing DAVE external sender package")
-      _ <- if (pending.isEmpty) Right(()) else attempt(state.mlsEngine.initializeLocalGroup(pending.head.groupId, sender))
+      _ <-
+        if (pending.isEmpty) Right(())
+        else
+          attempt(
+            state.mlsEngine.initializeLocalGroup(pending.head.groupId, sender)
+          )
       _ <- applyProposalBatchesToMls(state.mlsEngine, pending, proposals)
-      result <- if (pending.isEmpty) Right(None)
-        else attempt(state.mlsEngine.commitPending(pending.exists(_.proposal.isInstanceOf[MlsMessages.AddProposal]))).map(Some(_))
+      result <-
+        if (pending.isEmpty) Right(None)
+        else
+          attempt(
+            state.mlsEngine.commitPending(
+              pending.exists(_.proposal.isInstanceOf[MlsMessages.AddProposal])
+            )
+          ).map(Some(_))
     } yield result
 
   def processCommitForSelf(
-    state: DaveKeyState,
-    selfUserId: String,
-    groupId: String,
-    commitMessage: Array[Byte]
+      state: DaveKeyState,
+      selfUserId: String,
+      groupId: String,
+      commitMessage: Array[Byte]
   ): Either[String, Option[DaveSupport.SenderKeyRatchet]] =
     for {
-      mlsMessage <- MlsMessages.parseMlsMessage(commitMessage).left.map(_.message)
-      publicMessage <- MlsMessages.parsePublicMessage(mlsMessage).left.map(_.message)
-      _ <- Either.cond(publicMessage.framedContent.contentType == MlsMessages.ContentTypeCommit, (), "MLS message is not a commit")
-      commit <- MlsMessages.parseCommit(publicMessage.framedContent.content).left.map(_.message)
-      _ <- Either.cond(commit.proposals.nonEmpty, (), "DAVE commits must reference at least one proposal")
+      mlsMessage <- MlsMessages
+        .parseMlsMessage(commitMessage)
+        .left
+        .map(_.message)
+      publicMessage <- MlsMessages
+        .parsePublicMessage(mlsMessage)
+        .left
+        .map(_.message)
+      _ <- Either.cond(
+        publicMessage.framedContent.contentType == MlsMessages.ContentTypeCommit,
+        (),
+        "MLS message is not a commit"
+      )
+      commit <- MlsMessages
+        .parseCommit(publicMessage.framedContent.content)
+        .left
+        .map(_.message)
+      _ <- Either.cond(
+        commit.proposals.nonEmpty,
+        (),
+        "DAVE commits must reference at least one proposal"
+      )
       _ <- Either.cond(
         commit.proposals.forall(_.isInstanceOf[MlsMessages.ProposalReference]),
         (),
         "DAVE commits must reference cached gateway proposals and must not include inline proposals"
       )
-      result <- attempt(state.mlsEngine.processCommit(commitMessage)).map(Some(_))
+      result <- attempt(state.mlsEngine.processCommit(commitMessage))
+        .map(Some(_))
     } yield result
 
   def processWelcomeForSelf(
-    state: DaveKeyState,
-    selfUserId: String,
-    groupId: String,
-    welcomeMessage: Array[Byte],
-    recognizedUserIds: Set[String]
+      state: DaveKeyState,
+      selfUserId: String,
+      groupId: String,
+      welcomeMessage: Array[Byte],
+      recognizedUserIds: Set[String]
   ): Either[String, DaveSupport.SenderKeyRatchet] =
     for {
-      welcome <- MlsMessages.parseWelcomePayload(welcomeMessage).left.map(_.message)
-      _ <- Either.cond(welcome.cipherSuite == CipherSuiteDhkemp256Aes128GcmSha256P256, (), s"Unsupported MLS welcome ciphersuite: ${welcome.cipherSuite}")
+      welcome <- MlsMessages
+        .parseWelcomePayload(welcomeMessage)
+        .left
+        .map(_.message)
+      _ <- Either.cond(
+        welcome.cipherSuite == CipherSuiteDhkemp256Aes128GcmSha256P256,
+        (),
+        s"Unsupported MLS welcome ciphersuite: ${welcome.cipherSuite}"
+      )
       ownRef = keyPackageRef(state, selfUserId)
       _ <- Either.cond(
         welcome.secrets.exists(secret => secret.newMember.sameElements(ownRef)),
@@ -129,136 +181,212 @@ object DaveProtocol {
     } yield result
 
   def validateProposalBatches(
-    externalSender: Option[DaveSupport.ExternalSender],
-    proposalBatches: List[Array[Byte]],
-    recognizedUserIds: Set[String]
+      externalSender: Option[DaveSupport.ExternalSender],
+      proposalBatches: List[Array[Byte]],
+      recognizedUserIds: Set[String]
   ): Either[String, List[DaveValidatedProposal]] = {
     val sender = externalSender.toRight("Missing DAVE external sender package")
     sender.flatMap { gatewaySender =>
-      val pending = scala.collection.mutable.LinkedHashMap.empty[Vector[Byte], DaveValidatedProposal]
-      proposalBatches.foldLeft[Either[String, Unit]](Right(())) {
-        case (Left(error), _) => Left(error)
-        case (Right(_), bytes) =>
-          MlsMessages.parseProposalBatch(bytes).left.map(_.message).flatMap { batch =>
-            if (batch.isRevoke) {
-              batch.revokedRefs.foreach(ref => pending.remove(ref.toVector))
-              Right(())
-            } else {
-              batch.proposals.zip(batch.rawProposalMessages.map(Some(_))).foldLeft[Either[String, Unit]](Right(())) {
-                case (Left(error), _) => Left(error)
-                case (Right(_), (publicMessage, rawMessage)) =>
-                  validateGatewayProposal(gatewaySender, publicMessage, rawMessage, recognizedUserIds).map { proposal =>
-                    pending.update(proposal.ref.toVector, proposal)
-                  }
-              }
+      val pending = scala.collection.mutable.LinkedHashMap
+        .empty[Vector[Byte], DaveValidatedProposal]
+      proposalBatches
+        .foldLeft[Either[String, Unit]](Right(())) {
+          case (Left(error), _)  => Left(error)
+          case (Right(_), bytes) =>
+            MlsMessages.parseProposalBatch(bytes).left.map(_.message).flatMap {
+              batch =>
+                if (batch.isRevoke) {
+                  batch.revokedRefs.foreach(ref => pending.remove(ref.toVector))
+                  Right(())
+                } else {
+                  batch.proposals
+                    .zip(batch.rawProposalMessages.map(Some(_)))
+                    .foldLeft[Either[String, Unit]](Right(())) {
+                      case (Left(error), _) => Left(error)
+                      case (Right(_), (publicMessage, rawMessage)) =>
+                        validateGatewayProposal(
+                          gatewaySender,
+                          publicMessage,
+                          rawMessage,
+                          recognizedUserIds
+                        ).map { proposal =>
+                          pending.update(proposal.ref.toVector, proposal)
+                        }
+                    }
+                }
             }
-          }
-      }.map(_ => pending.values.toList)
+        }
+        .map(_ => pending.values.toList)
     }
   }
 
-  def deriveSelfRatchetFromExporterSecret(exporterSecret: Array[Byte], selfUserId: String): DaveSupport.SenderKeyRatchet =
+  def deriveSelfRatchetFromExporterSecret(
+      exporterSecret: Array[Byte],
+      selfUserId: String
+  ): DaveSupport.SenderKeyRatchet =
     MlsPrimitives.daveSenderRatchet(exporterSecret, selfUserId)
 
-  def deriveExporterSecret(epochSecret: Array[Byte], confirmedTranscriptHash: Array[Byte]): Array[Byte] = {
-    val exporterSecret = MlsPrimitives.deriveSecret(epochSecret, "exporter", confirmedTranscriptHash)
+  def deriveExporterSecret(
+      epochSecret: Array[Byte],
+      confirmedTranscriptHash: Array[Byte]
+  ): Array[Byte] = {
+    val exporterSecret = MlsPrimitives.deriveSecret(
+      epochSecret,
+      "exporter",
+      confirmedTranscriptHash
+    )
     require(confirmedTranscriptHash.length == MlsPrimitives.HashLength)
     exporterSecret
   }
 
-  def keyPackageRef(state: DaveKeyState, userId: String): Array[Byte] =
-    {
-      val keyPackageBytes = state.mlsEngine.keyPackageMessage()
-      MlsMessages.parseKeyPackageMessage(keyPackageBytes) match {
-        case Right(_) =>
-          MlsPrimitives.refHash("KeyPackage Reference", keyPackageBytes)
+  def keyPackageRef(state: DaveKeyState, userId: String): Array[Byte] = {
+    val keyPackageBytes = state.mlsEngine.keyPackageMessage()
+    MlsMessages.parseKeyPackageMessage(keyPackageBytes) match {
+      case Right(_) =>
+        MlsPrimitives.refHash("KeyPackage Reference", keyPackageBytes)
 
       case Left(error) =>
         throw new IllegalStateException(error.message)
-      }
     }
+  }
 
   def proposalRef(publicMessage: MlsMessages.PublicMessage): Array[Byte] =
     MlsPrimitives.refHash(
       "Proposal Reference",
-      publicMessage.tbs.drop(2) ++ MlsPrimitives.opaqueVar(publicMessage.signature)
+      publicMessage.tbs.drop(2) ++ MlsPrimitives.opaqueVar(
+        publicMessage.signature
+      )
     )
 
   private def validateGatewayProposal(
-    externalSender: DaveSupport.ExternalSender,
-    publicMessage: MlsMessages.PublicMessage,
-    rawMessage: Option[Array[Byte]],
-    recognizedUserIds: Set[String]
+      externalSender: DaveSupport.ExternalSender,
+      publicMessage: MlsMessages.PublicMessage,
+      rawMessage: Option[Array[Byte]],
+      recognizedUserIds: Set[String]
   ): Either[String, DaveValidatedProposal] =
     for {
-      _ <- Either.cond(publicMessage.framedContent.sender.senderType == MlsMessages.SenderTypeExternal, (), "DAVE proposal was not sent by an external sender")
-      _ <- Either.cond(publicMessage.framedContent.sender.index.contains(0L), (), "DAVE proposal external sender index was not 0")
-      _ <- Either.cond(publicMessage.framedContent.contentType == MlsMessages.ContentTypeProposal, (), "DAVE proposal message did not contain MLS proposal content")
+      _ <- Either.cond(
+        publicMessage.framedContent.sender.senderType == MlsMessages.SenderTypeExternal,
+        (),
+        "DAVE proposal was not sent by an external sender"
+      )
+      _ <- Either.cond(
+        publicMessage.framedContent.sender.index.contains(0L),
+        (),
+        "DAVE proposal external sender index was not 0"
+      )
+      _ <- Either.cond(
+        publicMessage.framedContent.contentType == MlsMessages.ContentTypeProposal,
+        (),
+        "DAVE proposal message did not contain MLS proposal content"
+      )
       _ <- Either.cond(
         externalSender.credential.credentialType == CredentialTypeBasic,
         (),
         s"Unsupported external sender credential type: ${externalSender.credential.credentialType}"
       )
       _ <- Either.cond(
-        MlsMessages.verifyPublicMessageSignature(publicMessage, externalSender.signatureKey),
+        MlsMessages.verifyPublicMessageSignature(
+          publicMessage,
+          externalSender.signatureKey
+        ),
         (),
         "DAVE external proposal signature verification failed"
       )
-      proposal <- MlsMessages.parseProposal(publicMessage.framedContent.content).left.map(_.message)
+      proposal <- MlsMessages
+        .parseProposal(publicMessage.framedContent.content)
+        .left
+        .map(_.message)
       _ <- validateProposalPayload(proposal, recognizedUserIds)
-    } yield DaveValidatedProposal(proposalRef(publicMessage), proposal, publicMessage.framedContent.groupId, rawMessage.map(_.clone()))
+    } yield DaveValidatedProposal(
+      proposalRef(publicMessage),
+      proposal,
+      publicMessage.framedContent.groupId,
+      rawMessage.map(_.clone())
+    )
 
-  private def validateProposalPayload(proposal: MlsMessages.Proposal, recognizedUserIds: Set[String]): Either[String, Unit] =
+  private def validateProposalPayload(
+      proposal: MlsMessages.Proposal,
+      recognizedUserIds: Set[String]
+  ): Either[String, Unit] =
     proposal match {
       case MlsMessages.AddProposal(keyPackage) =>
         for {
-          _ <- Either.cond(keyPackage.version == ProtocolVersionMls10, (), s"Unsupported key package MLS version: ${keyPackage.version}")
-          _ <- Either.cond(keyPackage.cipherSuite == CipherSuiteDhkemp256Aes128GcmSha256P256, (), s"Unsupported key package cipher suite: ${keyPackage.cipherSuite}")
-          userId <- keyPackage.leafNode.userId.toRight("Add proposal key package did not contain a Discord user ID credential")
-          _ <- Either.cond(recognizedUserIds.contains(userId), (), s"Add proposal user $userId is not in the recognized voice participant set")
-          _ <- Either.cond(MlsMessages.verifyLeafNodeSignature(keyPackage.leafNode), (), s"Add proposal key package for $userId has an invalid leaf signature")
-          _ <- Either.cond(MlsMessages.verifyKeyPackageSignature(keyPackage), (), s"Add proposal key package for $userId has an invalid key-package signature")
+          _ <- Either.cond(
+            keyPackage.version == ProtocolVersionMls10,
+            (),
+            s"Unsupported key package MLS version: ${keyPackage.version}"
+          )
+          _ <- Either.cond(
+            keyPackage.cipherSuite == CipherSuiteDhkemp256Aes128GcmSha256P256,
+            (),
+            s"Unsupported key package cipher suite: ${keyPackage.cipherSuite}"
+          )
+          userId <- keyPackage.leafNode.userId.toRight(
+            "Add proposal key package did not contain a Discord user ID credential"
+          )
+          _ <- Either.cond(
+            recognizedUserIds.contains(userId),
+            (),
+            s"Add proposal user $userId is not in the recognized voice participant set"
+          )
+          _ <- Either.cond(
+            MlsMessages.verifyLeafNodeSignature(keyPackage.leafNode),
+            (),
+            s"Add proposal key package for $userId has an invalid leaf signature"
+          )
+          _ <- Either.cond(
+            MlsMessages.verifyKeyPackageSignature(keyPackage),
+            (),
+            s"Add proposal key package for $userId has an invalid key-package signature"
+          )
         } yield ()
 
       case _: MlsMessages.RemoveProposal =>
         Right(())
 
       case MlsMessages.RawProposal(proposalType, _) =>
-        Left(s"DAVE only accepts Add and Remove proposals, got proposal type $proposalType")
+        Left(
+          s"DAVE only accepts Add and Remove proposals, got proposal type $proposalType"
+        )
     }
 
   private def applyProposalBatchesToMls(
-    engine: DaveMlsEngine,
-    validatedProposals: List[DaveValidatedProposal],
-    proposalBatches: List[Array[Byte]]
+      engine: DaveMlsEngine,
+      validatedProposals: List[DaveValidatedProposal],
+      proposalBatches: List[Array[Byte]]
   ): Either[String, Unit] = {
     val rawMessagesByRef = validatedProposals
-      .flatMap(proposal => proposal.rawMessage.map(raw => proposal.ref.toVector -> raw))
+      .flatMap(proposal =>
+        proposal.rawMessage.map(raw => proposal.ref.toVector -> raw)
+      )
       .toMap
 
     proposalBatches.foldLeft[Either[String, Unit]](Right(())) {
-      case (Left(error), _) => Left(error)
+      case (Left(error), _)  => Left(error)
       case (Right(_), bytes) =>
-        MlsMessages.parseProposalBatch(bytes).left.map(_.message).flatMap { batch =>
-          if (batch.isRevoke) {
-            batch.revokedRefs.foldLeft[Either[String, Unit]](Right(())) {
-              case (Left(error), _) => Left(error)
-              case (Right(_), ref) => attempt(engine.revokeProposal(ref))
+        MlsMessages.parseProposalBatch(bytes).left.map(_.message).flatMap {
+          batch =>
+            if (batch.isRevoke) {
+              batch.revokedRefs.foldLeft[Either[String, Unit]](Right(())) {
+                case (Left(error), _) => Left(error)
+                case (Right(_), ref)  => attempt(engine.revokeProposal(ref))
+              }
+            } else {
+              batch.proposals.foldLeft[Either[String, Unit]](Right(())) {
+                case (Left(error), _)          => Left(error)
+                case (Right(_), publicMessage) =>
+                  val messageBytes = rawMessagesByRef.getOrElse(
+                    proposalRef(publicMessage).toVector,
+                    MlsPrimitives.uint16(MlsPrimitives.MlsVersion10) ++
+                      MlsPrimitives
+                        .uint16(MlsMessages.WireFormatPublicMessage) ++
+                      publicMessage.tbs.drop(4) ++
+                      MlsPrimitives.opaqueVar(publicMessage.signature)
+                  )
+                  attempt(engine.cacheProposal(messageBytes))
+              }
             }
-          } else {
-            batch.proposals.foldLeft[Either[String, Unit]](Right(())) {
-              case (Left(error), _) => Left(error)
-              case (Right(_), publicMessage) =>
-                val messageBytes = rawMessagesByRef.getOrElse(
-                  proposalRef(publicMessage).toVector,
-                  MlsPrimitives.uint16(MlsPrimitives.MlsVersion10) ++
-                    MlsPrimitives.uint16(MlsMessages.WireFormatPublicMessage) ++
-                    publicMessage.tbs.drop(4) ++
-                    MlsPrimitives.opaqueVar(publicMessage.signature)
-                )
-                attempt(engine.cacheProposal(messageBytes))
-            }
-          }
         }
     }
   }
@@ -266,10 +394,14 @@ object DaveProtocol {
   private def attempt[A](thunk: => A): Either[String, A] =
     try Right(thunk)
     catch {
-      case e: Exception => Left(Option(e.getMessage).getOrElse(e.getClass.getSimpleName))
+      case e: Exception =>
+        Left(Option(e.getMessage).getOrElse(e.getClass.getSimpleName))
     }
 
-  private def buildKeyPackage(state: DaveKeyState, userId: String): Array[Byte] = {
+  private def buildKeyPackage(
+      state: DaveKeyState,
+      userId: String
+  ): Array[Byte] = {
     val sigPub = uncompressedPoint(state.signingKeyPair)
     val hpkePub = uncompressedPoint(state.hpkeKeyPair)
     val initPub = uncompressedPoint(state.initKeyPair)
@@ -283,10 +415,16 @@ object DaveProtocol {
     kpTbs ++ opaqueVar(kpSig)
   }
 
-  private def buildLeafNodeTbs(sigPub: Array[Byte], encPub: Array[Byte], userId: String): Array[Byte] = {
+  private def buildLeafNodeTbs(
+      sigPub: Array[Byte],
+      encPub: Array[Byte],
+      userId: String
+  ): Array[Byte] = {
     opaqueVar(encPub) ++
       opaqueVar(sigPub) ++
-      uint16Bytes(CredentialTypeBasic) ++ opaqueVar(discordUserIdIdentity(userId)) ++
+      uint16Bytes(CredentialTypeBasic) ++ opaqueVar(
+        discordUserIdIdentity(userId)
+      ) ++
       buildCapabilities() ++
       Array(LeafNodeSourceKeyPackage.toByte) ++
       KeyPackageLifetimeNotBefore ++ KeyPackageLifetimeNotAfter ++
@@ -300,7 +438,10 @@ object DaveProtocol {
       vectorVar(Nil) ++
       vectorVar(List(uint16Bytes(CredentialTypeBasic)))
 
-  private def buildKeyPackageTbs(initKey: Array[Byte], leafNode: Array[Byte]): Array[Byte] =
+  private def buildKeyPackageTbs(
+      initKey: Array[Byte],
+      leafNode: Array[Byte]
+  ): Array[Byte] =
     uint16Bytes(ProtocolVersionMls10) ++
       uint16Bytes(CipherSuiteDhkemp256Aes128GcmSha256P256) ++
       opaqueVar(initKey) ++
@@ -312,7 +453,11 @@ object DaveProtocol {
       uint16Bytes(WireFormatKeyPackage) ++
       keyPackage
 
-  private def signWithLabel(label: String, content: Array[Byte], kp: KeyPair): Array[Byte] = {
+  private def signWithLabel(
+      label: String,
+      content: Array[Byte],
+      kp: KeyPair
+  ): Array[Byte] = {
     val fullLabel = s"MLS 1.0 $label".getBytes("UTF-8")
     val msg = opaqueVar(fullLabel) ++ opaqueVar(content)
 
@@ -324,13 +469,15 @@ object DaveProtocol {
 
   private def uncompressedPoint(kp: KeyPair): Array[Byte] = {
     val ec = kp.getPublic.asInstanceOf[ECPublicKey]
-    Array(0x04.toByte) ++ padTo32(ec.getW.getAffineX.toByteArray) ++ padTo32(ec.getW.getAffineY.toByteArray)
+    Array(0x04.toByte) ++ padTo32(ec.getW.getAffineX.toByteArray) ++ padTo32(
+      ec.getW.getAffineY.toByteArray
+    )
   }
 
   private def padTo32(bytes: Array[Byte]): Array[Byte] = bytes.length match {
-    case 32 => bytes
+    case 32          => bytes
     case n if n > 32 => bytes.drop(n - 32)
-    case n => Array.fill[Byte](32 - n)(0) ++ bytes
+    case n           => Array.fill[Byte](32 - n)(0) ++ bytes
   }
 
   private def discordUserIdIdentity(userId: String): Array[Byte] =
@@ -348,17 +495,18 @@ object DaveProtocol {
     require(value >= 0, s"MLS varint value must be non-negative: $value")
     if (value < 0x40) Array(value.toByte)
     else if (value < 0x4000) Array(((value >> 8) | 0x40).toByte, value.toByte)
-    else if (value < 0x40000000) Array(
-      ((value >> 24) | 0x80).toByte,
-      (value >> 16).toByte,
-      (value >> 8).toByte,
-      value.toByte
-    )
+    else if (value < 0x40000000)
+      Array(
+        ((value >> 24) | 0x80).toByte,
+        (value >> 16).toByte,
+        (value >> 8).toByte,
+        value.toByte
+      )
     else throw new IllegalArgumentException(s"MLS varint too large: $value")
   }
 
   private def uint16Bytes(v: Int): Array[Byte] =
-    Array(((v >> 8) & 0xFF).toByte, (v & 0xFF).toByte)
+    Array(((v >> 8) & 0xff).toByte, (v & 0xff).toByte)
 
   private def uint64Bytes(v: Long): Array[Byte] = {
     val bb = ByteBuffer.allocate(8)

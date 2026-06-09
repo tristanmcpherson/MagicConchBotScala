@@ -96,11 +96,13 @@ class DiscordModelsSerializationTest extends FunSuite {
     val embed = MessageEmbed(
       title = Some("Test Embed"),
       description = Some("This is a test embed"),
-      color = Some(0x00FF00),
-      fields = Some(List(
-        EmbedField(name = "Field 1", value = "Value 1", inline = Some(true)),
-        EmbedField(name = "Field 2", value = "Value 2", inline = Some(false))
-      ))
+      color = Some(0x00ff00),
+      fields = Some(
+        List(
+          EmbedField(name = "Field 1", value = "Value 1", inline = Some(true)),
+          EmbedField(name = "Field 2", value = "Value 2", inline = Some(false))
+        )
+      )
     )
 
     val json = embed.asJson.noSpaces
@@ -110,7 +112,7 @@ class DiscordModelsSerializationTest extends FunSuite {
       case Right(decodedEmbed) =>
         assertEquals(decodedEmbed.title, Some("Test Embed"))
         assertEquals(decodedEmbed.description, Some("This is a test embed"))
-        assertEquals(decodedEmbed.color, Some(0x00FF00))
+        assertEquals(decodedEmbed.color, Some(0x00ff00))
         assert(decodedEmbed.fields.isDefined)
         assertEquals(decodedEmbed.fields.get.length, 2)
       case Left(error) =>
@@ -121,10 +123,12 @@ class DiscordModelsSerializationTest extends FunSuite {
   test("InteractionResponse should serialize correctly") {
     val response = InteractionResponse(
       `type` = 4, // CHANNEL_MESSAGE_WITH_SOURCE
-      data = Some(InteractionResponseData(
-        content = Some("Test response"),
-        flags = Some(64) // Ephemeral
-      ))
+      data = Some(
+        InteractionResponseData(
+          content = Some("Test response"),
+          flags = Some(64) // Ephemeral
+        )
+      )
     )
 
     val json = response.asJson.noSpaces
@@ -134,7 +138,10 @@ class DiscordModelsSerializationTest extends FunSuite {
       case Right(decodedResponse) =>
         assertEquals(decodedResponse.`type`, 4)
         assert(decodedResponse.data.isDefined)
-        assertEquals(decodedResponse.data.flatMap(_.content), Some("Test response"))
+        assertEquals(
+          decodedResponse.data.flatMap(_.content),
+          Some("Test response")
+        )
         assertEquals(decodedResponse.data.flatMap(_.flags), Some(64))
       case Left(error) =>
         fail(s"Failed to decode InteractionResponse: $error")
@@ -299,8 +306,14 @@ class DiscordModelsSerializationTest extends FunSuite {
   }
 
   test("EncryptionMode should have correct string values") {
-    assertEquals(EncryptionMode.AeadAes256GcmRtpSize.value, "aead_aes256_gcm_rtpsize")
-    assertEquals(EncryptionMode.AeadXChaCha20Poly1305RtpSize.value, "aead_xchacha20_poly1305_rtpsize")
+    assertEquals(
+      EncryptionMode.AeadAes256GcmRtpSize.value,
+      "aead_aes256_gcm_rtpsize"
+    )
+    assertEquals(
+      EncryptionMode.AeadXChaCha20Poly1305RtpSize.value,
+      "aead_xchacha20_poly1305_rtpsize"
+    )
   }
 
   test("EncryptionMode.fromString should parse correctly") {
@@ -325,9 +338,21 @@ class DiscordModelsSerializationTest extends FunSuite {
     assertEquals(DiscordIntents.GUILD_VOICE_STATES, 128)
 
     val botDefault = DiscordIntents.BOT_DEFAULT
-    assert((botDefault & DiscordIntents.GUILDS) != 0, "BOT_DEFAULT should include GUILDS")
-    assert((botDefault & DiscordIntents.GUILD_MESSAGES) != 0, "BOT_DEFAULT should include GUILD_MESSAGES")
-    assert((botDefault & DiscordIntents.MESSAGE_CONTENT) != 0, "BOT_DEFAULT should include MESSAGE_CONTENT")
-    assert((botDefault & DiscordIntents.GUILD_VOICE_STATES) != 0, "BOT_DEFAULT should include GUILD_VOICE_STATES")
+    assert(
+      (botDefault & DiscordIntents.GUILDS) != 0,
+      "BOT_DEFAULT should include GUILDS"
+    )
+    assert(
+      (botDefault & DiscordIntents.GUILD_MESSAGES) != 0,
+      "BOT_DEFAULT should include GUILD_MESSAGES"
+    )
+    assert(
+      (botDefault & DiscordIntents.MESSAGE_CONTENT) != 0,
+      "BOT_DEFAULT should include MESSAGE_CONTENT"
+    )
+    assert(
+      (botDefault & DiscordIntents.GUILD_VOICE_STATES) != 0,
+      "BOT_DEFAULT should include GUILD_VOICE_STATES"
+    )
   }
 }

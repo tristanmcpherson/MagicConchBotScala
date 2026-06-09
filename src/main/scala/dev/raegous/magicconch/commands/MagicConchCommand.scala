@@ -8,7 +8,11 @@ class MagicConchCommand[F[_]: Async](using Logger[F]) extends Command[F] {
   val name = "magicconch"
   val description = "Ask the Magic Conch Shell a question"
   val arguments = List(
-    CommandArgument("question", "Your question for the Magic Conch", required = false)
+    CommandArgument(
+      "question",
+      "Your question for the Magic Conch",
+      required = false
+    )
   )
 
   private val responses = List(

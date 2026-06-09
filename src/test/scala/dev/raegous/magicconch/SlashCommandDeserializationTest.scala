@@ -91,7 +91,10 @@ class SlashCommandDeserializationTest extends munit.FunSuite {
         assert(commands.forall(_.default_member_permissions == None))
         val playlistCmd = commands.find(_.name == "playlist")
         assert(playlistCmd.isDefined, "Should find playlist command")
-        assert(playlistCmd.exists(_.options.exists(_.length == 6)), "Playlist should have 6 subcommands")
+        assert(
+          playlistCmd.exists(_.options.exists(_.length == 6)),
+          "Playlist should have 6 subcommands"
+        )
       case Left(error) =>
         fail(s"Failed to decode real command array: $error")
     }

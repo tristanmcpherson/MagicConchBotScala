@@ -10,9 +10,10 @@ import io.circe.syntax.*
 import dev.raegous.magicconch.music.YouTubeSearchClient
 
 class SearchCommand[F[_]: Async](
-  voiceManager: VoiceManager[F],
-  youtubeSearch: YouTubeSearchClient[F]
-)(using Logger[F]) extends Command[F] {
+    voiceManager: VoiceManager[F],
+    youtubeSearch: YouTubeSearchClient[F]
+)(using Logger[F])
+    extends Command[F] {
 
   val name = "search"
   val description = "Search YouTube for videos"
@@ -21,12 +22,16 @@ class SearchCommand[F[_]: Async](
   )
 
   def execute(context: CommandContext[F]): F[CommandResult] = {
-    context.args.get("query").fold(
-      Async[F].pure(CommandResult(
-        message = "Please provide a search query",
-        isError = true
-      ))
-    )(query => performSearch(query, context.userId))
+    context.args
+      .get("query")
+      .fold(
+        Async[F].pure(
+          CommandResult(
+            message = "Please provide a search query",
+            isError = true
+          )
+        )
+      )(query => performSearch(query, context.userId))
   }
 
   private def performSearch(query: String, userId: String): F[CommandResult] = {
@@ -38,7 +43,11 @@ class SearchCommand[F[_]: Async](
     } yield response
   }
 
-  private def buildSearchResponse(query: String, results: List[_], userId: String): F[CommandResult] = {
+  private def buildSearchResponse(
+      query: String,
+      results: List[_],
+      userId: String
+  ): F[CommandResult] = {
     Async[F].pure(results match {
       case Nil =>
         CommandResult(
@@ -50,14 +59,19 @@ class SearchCommand[F[_]: Async](
 
         val embed = MessageEmbed(
           title = Some(s"Search Results: $query"),
-          description = Some("Click a button below to add a track to the queue"),
-          color = Some(0x1DB954), // Spotify green
-          fields = Some(limitedResults.zipWithIndex.map { case (result: dev.raegous.magicconch.music.YouTubeSearchResult, index) =>
-            EmbedField(
-              name = s"${index + 1}. ${truncate(result.title, 60)}",
-              value = s"By: ${truncate(result.channelTitle, 40)}",
-              inline = Some(false)
-            )
+          description =
+            Some("Click a button below to add a track to the queue"),
+          color = Some(0x1db954), // Spotify green
+          fields = Some(limitedResults.zipWithIndex.map {
+            case (
+                  result: dev.raegous.magicconch.music.YouTubeSearchResult,
+                  index
+                ) =>
+              EmbedField(
+                name = s"${index + 1}. ${truncate(result.title, 60)}",
+                value = s"By: ${truncate(result.channelTitle, 40)}",
+                inline = Some(false)
+              )
           })
         )
 
@@ -84,5 +98,7 @@ class SearchCommand[F[_]: Async](
   }
 
   private def truncate(str: String, maxLength: Int): String =
-    Option.when(str.length > maxLength)(str.take(maxLength - 3) + "...").getOrElse(str)
+    Option
+      .when(str.length > maxLength)(str.take(maxLength - 3) + "...")
+      .getOrElse(str)
 }

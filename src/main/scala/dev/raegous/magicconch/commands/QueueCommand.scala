@@ -8,7 +8,8 @@ import dev.raegous.magicconch.discord.DiscordModels.*
 import dev.raegous.magicconch.discord.*
 import org.typelevel.log4cats.Logger
 
-class QueueCommand[F[_]: Async](voiceManager: VoiceManager[F])(using Logger[F]) extends Command[F] {
+class QueueCommand[F[_]: Async](voiceManager: VoiceManager[F])(using Logger[F])
+    extends Command[F] {
   val name = "queue"
   val description = "Show the current music queue"
   val arguments = List.empty
@@ -16,7 +17,8 @@ class QueueCommand[F[_]: Async](voiceManager: VoiceManager[F])(using Logger[F]) 
   def execute(context: CommandContext[F]): F[CommandResult] = {
     voiceManager.getQueue(context.guildId).map { queue =>
       val queueText = buildQueueText(queue)
-      val components = queue.currentTrack.map(_ => buildQueueControls(queue, context.guildId))
+      val components =
+        queue.currentTrack.map(_ => buildQueueControls(queue, context.guildId))
       CommandResult(queueText, components = components)
     }
   }
@@ -28,15 +30,22 @@ class QueueCommand[F[_]: Async](voiceManager: VoiceManager[F])(using Logger[F]) 
   }
 
   private def buildEmptyQueueText(tracks: List[MusicTrack]): String = {
-    Option.when(tracks.isEmpty)(()).fold(
-      formatQueueList(tracks)
-    )(_ => "Queue is empty. Use `/play <youtube-url>` to add songs!")
+    Option
+      .when(tracks.isEmpty)(())
+      .fold(
+        formatQueueList(tracks)
+      )(_ => "Queue is empty. Use `/play <youtube-url>` to add songs!")
   }
 
-  private def buildPlayingQueueText(current: MusicTrack, tracks: List[MusicTrack]): String = {
-    val upcoming = Option.when(tracks.isEmpty)(()).fold(
-      formatTrackList(tracks)
-    )(_ => "Empty")
+  private def buildPlayingQueueText(
+      current: MusicTrack,
+      tracks: List[MusicTrack]
+  ): String = {
+    val upcoming = Option
+      .when(tracks.isEmpty)(())
+      .fold(
+        formatTrackList(tracks)
+      )(_ => "Empty")
     s"**Now Playing:** ${current.title}\n\n**Queue (${tracks.length} tracks):**\n$upcoming"
   }
 
@@ -46,12 +55,19 @@ class QueueCommand[F[_]: Async](voiceManager: VoiceManager[F])(using Logger[F]) 
   }
 
   private def formatTrackList(tracks: List[MusicTrack]): String = {
-    tracks.take(10).zipWithIndex.map { case (track, idx) =>
-      s"${idx + 1}. ${track.title} (requested by ${track.requestedBy})"
-    }.mkString("\n")
+    tracks
+      .take(10)
+      .zipWithIndex
+      .map { case (track, idx) =>
+        s"${idx + 1}. ${track.title} (requested by ${track.requestedBy})"
+      }
+      .mkString("\n")
   }
 
-  private def buildQueueControls(queue: MusicQueue, guildId: String): List[MessageComponent] = {
+  private def buildQueueControls(
+      queue: MusicQueue,
+      guildId: String
+  ): List[MessageComponent] = {
     val hasQueue = queue.tracks.nonEmpty
 
     val pauseButton = MessageComponent(

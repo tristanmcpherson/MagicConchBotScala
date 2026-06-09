@@ -11,7 +11,29 @@ env:
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/magicconchbotscala
 
 jobs:
+  scalafmt:
+    name: Scalafmt
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: sbt
+
+      - name: Set up sbt
+        uses: sbt/setup-sbt@v1
+
+      - name: Check formatting
+        run: sbt scalafmtCheckAll scalafmtSbtCheck
+
   build:
+    needs: scalafmt
     runs-on: ubuntu-latest
 
     steps:
